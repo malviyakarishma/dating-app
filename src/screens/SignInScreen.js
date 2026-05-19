@@ -1,18 +1,23 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, SafeAreaView, KeyboardAvoidingView, Platform, Image } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, SafeAreaView, KeyboardAvoidingView, Platform, Image, ImageBackground } from 'react-native';
 import { COLORS } from '../theme/colors';
 
 export default function SignInScreen({ navigation, route }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  
+
   // We'll pass signIn from RootNavigator down, or use Context. 
   // For now, let's assume it's passed in route params.
   const { signIn } = route.params || {};
 
   return (
-    <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView 
+    <ImageBackground 
+      source={require('../../assets/coco.png')} 
+      style={styles.backgroundImage}
+      resizeMode="cover"
+    >
+      <SafeAreaView style={styles.container}>
+      <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.content}
       >
@@ -42,11 +47,11 @@ export default function SignInScreen({ navigation, route }) {
             secureTextEntry
           />
 
-          <TouchableOpacity style={styles.forgotPassword}>
+          <TouchableOpacity style={styles.forgotPassword} onPress={() => navigation.navigate('ForgotPassword')}>
             <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.signInButton}
             onPress={() => signIn && signIn()}
           >
@@ -62,13 +67,19 @@ export default function SignInScreen({ navigation, route }) {
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
+  backgroundImage: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+  },
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: 'transparent',
   },
   content: {
     flex: 1,
@@ -91,12 +102,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 32,
     fontWeight: 'bold',
-    color: COLORS.secondary, // Black color for title
+    color: COLORS.white,
     marginBottom: 10,
   },
   subtitle: {
     fontSize: 18,
-    color: COLORS.textLight,
+    color: COLORS.authSecondary,
   },
   form: {
     width: '100%',
@@ -119,15 +130,15 @@ const styles = StyleSheet.create({
     marginBottom: 30,
   },
   forgotPasswordText: {
-    color: COLORS.textLight,
+    color: COLORS.authSecondary,
     fontSize: 14,
   },
   signInButton: {
-    backgroundColor: COLORS.primary,
+    backgroundColor: COLORS.authPrimary,
     paddingVertical: 15,
     borderRadius: 25,
     alignItems: 'center',
-    shadowColor: COLORS.primary,
+    shadowColor: COLORS.authPrimary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 10,
@@ -135,7 +146,7 @@ const styles = StyleSheet.create({
     marginBottom: 30,
   },
   signInButtonText: {
-    color: COLORS.secondary, // Black text on blush pink button
+    color: COLORS.authBackground, // Light text on button
     fontSize: 18,
     fontWeight: 'bold',
   },
@@ -144,11 +155,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   signUpText: {
-    color: COLORS.textLight,
+    color: COLORS.white,
     fontSize: 15,
   },
   signUpLink: {
-    color: COLORS.primary,
+    color: COLORS.authSecondary,
     fontSize: 15,
     fontWeight: 'bold',
   },
