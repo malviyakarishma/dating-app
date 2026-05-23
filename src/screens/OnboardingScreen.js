@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, Dimensions, TouchableOpacity, SafeAreaView, Platform, Animated, Easing } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Dimensions, TouchableOpacity, Platform, Animated, Easing } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { COLORS } from '../theme/colors';
 
@@ -161,7 +162,7 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   button: {
-    backgroundColor: COLORS.primary, // Blush pink button
+    backgroundColor: COLORS.maroon, // Maroon button
     paddingVertical: 16,
     paddingHorizontal: 50,
     borderRadius: 30,
@@ -172,7 +173,7 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   buttonText: {
-    color: COLORS.secondary, // Black text on blush pink
+    color: COLORS.cream, // Cream text on maroon
     fontSize: 18,
     fontWeight: '600',
     letterSpacing: 1,
@@ -195,7 +196,7 @@ const styles = StyleSheet.create({
   },
   activeDot: {
     width: 24,
-    backgroundColor: COLORS.primary,
+    backgroundColor: COLORS.cream,
   },
   inactiveDot: {
     width: 8,

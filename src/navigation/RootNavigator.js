@@ -1,12 +1,15 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { useAuth } from '../context/AuthContext';
 
 import AuthNavigator from './AuthNavigator';
 import TabNavigator from './TabNavigator';
 
 const Stack = createNativeStackNavigator();
 
-export default function RootNavigator({ userToken, signIn }) {
+export default function RootNavigator() {
+  const { userToken } = useAuth();
+
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       {userToken == null ? (
@@ -17,7 +20,6 @@ export default function RootNavigator({ userToken, signIn }) {
           options={{
             animationTypeForReplace: 'pop',
           }}
-          initialParams={{ signIn }}
         />
       ) : (
         // User is signed in

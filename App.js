@@ -1,29 +1,27 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { AuthProvider } from './src/context/AuthContext';
 import RootNavigator from './src/navigation/RootNavigator';
+import { useFonts, BricolageGrotesque_400Regular, BricolageGrotesque_700Bold } from '@expo-google-fonts/bricolage-grotesque';
 
 export default function App() {
-  const [userToken, setUserToken] = useState(null);
+  let [fontsLoaded] = useFonts({
+    BricolageGrotesque_400Regular,
+    BricolageGrotesque_700Bold,
+  });
 
-  const authContext = {
-    signIn: () => {
-      // In a real app, this would involve API calls
-      setUserToken('dummy-auth-token');
-    },
-    signOut: () => {
-      setUserToken(null);
-    },
-    signUp: () => {
-      setUserToken('dummy-auth-token');
-    },
-  };
+  if (!fontsLoaded) {
+    return null;
+  }
 
   return (
-    <SafeAreaProvider>
-      <NavigationContainer>
-        <RootNavigator userToken={userToken} signIn={authContext.signIn} />
-      </NavigationContainer>
-    </SafeAreaProvider>
+    <AuthProvider>
+      <SafeAreaProvider>
+        <NavigationContainer>
+          <RootNavigator />
+        </NavigationContainer>
+      </SafeAreaProvider>
+    </AuthProvider>
   );
 }

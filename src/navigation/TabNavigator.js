@@ -1,5 +1,7 @@
 import React from 'react';
+import { View, StyleSheet, Platform, Dimensions } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 
 import DiscoverScreen from '../screens/DiscoverScreen';
@@ -9,6 +11,7 @@ import ProfileScreen from '../screens/ProfileScreen';
 
 import { COLORS } from '../theme/colors';
 
+const { width: W } = Dimensions.get('window');
 const Tab = createBottomTabNavigator();
 
 export default function TabNavigator() {
@@ -18,7 +21,6 @@ export default function TabNavigator() {
         headerShown: false,
         tabBarIcon: ({ focused, color, size }) => {
           let iconName;
-
           if (route.name === 'Discover') {
             iconName = focused ? 'flame' : 'flame-outline';
           } else if (route.name === 'Matches') {
@@ -28,19 +30,21 @@ export default function TabNavigator() {
           } else if (route.name === 'Profile') {
             iconName = focused ? 'person' : 'person-outline';
           }
-
-          return <Ionicons name={iconName} size={size} color={color} />;
+          return <Ionicons name={iconName} size={W * 0.06} color={color} />;
         },
-        tabBarActiveTintColor: COLORS.primary,
-        tabBarInactiveTintColor: COLORS.textLight,
+        tabBarActiveTintColor: COLORS.cream,
+        tabBarInactiveTintColor: COLORS.taupe,
+        tabBarShowLabel: false,
         tabBarStyle: {
-          borderTopWidth: 0,
-          elevation: 10,
-          shadowOpacity: 0.1,
-          backgroundColor: COLORS.white,
-          height: 60,
-          paddingBottom: 10,
+          backgroundColor: '#1a0a0e',
+          borderTopWidth: 1,
+          borderTopColor: 'rgba(255,255,255,0.05)',
+          height: Platform.OS === 'ios' ? 85 : 65,
+          paddingBottom: Platform.OS === 'ios' ? 25 : 10,
           paddingTop: 10,
+        },
+        tabBarItemStyle: {
+          paddingVertical: 4,
         },
       })}
     >
