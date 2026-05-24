@@ -5,14 +5,18 @@ import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../theme/colors';
 import { validateEmail } from '../utils/validators';
+import { useAuth } from '../context/AuthContext';
 
 const { width: W } = Dimensions.get('window');
 
 export default function ForgotPasswordScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [errors, setErrors] = useState({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [apiError, setApiError] = useState(null);
+  const { forgotPassword } = useAuth();
 
-  const handleReset = () => {
+  const handleReset = async () => {
     let valid = true;
     let newErrors = {};
 
@@ -20,8 +24,18 @@ export default function ForgotPasswordScreen({ navigation }) {
     if (newErrors.email) valid = false;
 
     setErrors(newErrors);
+    setApiError(null);
+
     if (valid) {
-      navigation.navigate('ResetPassword');
+      try {
+        setIsSubmitting(true);
+        await forgotPassword(email.trim());
+        navigation.navigate('VerifyOtp', { email: email.trim() });
+      } catch (err) {
+        setApiError(err.message || 'Failed to send OTP. Please try again.');
+      } finally {
+        setIsSubmitting(false);
+      }
     }
   };
 
@@ -57,9 +71,11 @@ export default function ForgotPasswordScreen({ navigation }) {
           </View>
           {errors.email ? <Text style={styles.errorText}>{errors.email}</Text> : null}
 
-          <TouchableOpacity onPress={handleReset} activeOpacity={0.8}>
-            <LinearGradient colors={[COLORS.maroon, COLORS.burgundy]} style={styles.primaryBtn}>
-              <Text style={styles.primaryBtnText}>Send Reset Link</Text>
+          {apiError ? <Text style={[styles.errorText, { textAlign: 'center', marginLeft: 0 }]}>{apiError}</Text> : null}
+
+          <TouchableOpacity onPress={handleReset} activeOpacity={0.8} disabled={isSubmitting}>
+            <LinearGradient colors={isSubmitting ? ['rgba(255,255,255,0.1)', 'rgba(255,255,255,0.15)'] : [COLORS.maroon, COLORS.burgundy]} style={styles.primaryBtn}>
+              <Text style={styles.primaryBtnText}>{isSubmitting ? 'Sending...' : 'Send OTP'}</Text>
             </LinearGradient>
           </TouchableOpacity>
         </BlurView>

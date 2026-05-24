@@ -5,15 +5,20 @@ import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../theme/colors';
 import { validatePassword } from '../utils/validators';
+import { useAuth } from '../context/AuthContext';
 
 const { width: W } = Dimensions.get('window');
 
-export default function ResetPasswordScreen({ navigation }) {
+export default function ResetPasswordScreen({ route, navigation }) {
+  const { email } = route.params || {};
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [errors, setErrors] = useState({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [apiError, setApiError] = useState(null);
+  const { resetPassword } = useAuth();
 
-  const handleUpdate = () => {
+  const handleUpdate = async () => {
     let valid = true;
     let newErrors = {};
 
@@ -29,8 +34,18 @@ export default function ResetPasswordScreen({ navigation }) {
     }
 
     setErrors(newErrors);
+    setApiError(null);
+
     if (valid) {
-      navigation.navigate('SignIn');
+      try {
+        setIsSubmitting(true);
+        await resetPassword(email, password);
+        navigation.navigate('SignIn');
+      } catch (err) {
+        setApiError(err.message || 'Failed to reset password. Please try again.');
+      } finally {
+        setIsSubmitting(false);
+      }
     }
   };
 
@@ -77,9 +92,11 @@ export default function ResetPasswordScreen({ navigation }) {
           </View>
           {errors.confirmPassword ? <Text style={styles.errorText}>{errors.confirmPassword}</Text> : null}
 
-          <TouchableOpacity onPress={handleUpdate} activeOpacity={0.8}>
-            <LinearGradient colors={[COLORS.maroon, COLORS.burgundy]} style={styles.primaryBtn}>
-              <Text style={styles.primaryBtnText}>Update Password</Text>
+          {apiError ? <Text style={[styles.errorText, { textAlign: 'center', marginLeft: 0 }]}>{apiError}</Text> : null}
+
+          <TouchableOpacity onPress={handleUpdate} activeOpacity={0.8} disabled={isSubmitting}>
+            <LinearGradient colors={isSubmitting ? ['rgba(255,255,255,0.1)', 'rgba(255,255,255,0.15)'] : [COLORS.maroon, COLORS.burgundy]} style={styles.primaryBtn}>
+              <Text style={styles.primaryBtnText}>{isSubmitting ? 'Updating...' : 'Update Password'}</Text>
             </LinearGradient>
           </TouchableOpacity>
         </BlurView>

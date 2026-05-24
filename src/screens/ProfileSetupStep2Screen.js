@@ -94,15 +94,17 @@ const LookingForButton = ({ label, icon, active, onPress }) => (
 );
 
 export default function ProfileSetupStep2Screen({ navigation }) {
-  const [music, setMusic] = useState('');
-  const [movies, setMovies] = useState('');
-  const [date, setDate] = useState('');
-  const [food, setFood] = useState('');
+  const { user, updateProfileStep } = useAuth();
+  const [music, setMusic] = useState(user?.music || '');
+  const [movies, setMovies] = useState(user?.movies || '');
+  const [date, setDate] = useState(user?.date || '');
+  const [food, setFood] = useState(user?.food || '');
   
-  const [relationshipType, setRelationshipType] = useState('Long-term');
+  const [relationshipType, setRelationshipType] = useState(user?.relationshipType || 'Long-term');
   const [musicOpen, setMusicOpen] = useState(false);
   const [moviesOpen, setMoviesOpen] = useState(false);
   const [errors, setErrors] = useState({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const progressWidth = useRef(new Animated.Value(0)).current;
 
@@ -114,9 +116,7 @@ export default function ProfileSetupStep2Screen({ navigation }) {
     }).start();
   }, []);
 
-  const { signUp } = useAuth();
-
-  const handleComplete = () => {
+  const handleComplete = async () => {
     let valid = true;
     let newErrors = {};
 
@@ -131,7 +131,21 @@ export default function ProfileSetupStep2Screen({ navigation }) {
 
     setErrors(newErrors);
     if (valid) {
-      navigation.navigate('ProfileSetupStep3');
+      try {
+        setIsSubmitting(true);
+        await updateProfileStep({
+          music,
+          movies,
+          date,
+          food,
+          relationshipType,
+        });
+        navigation.navigate('ProfileSetupStep3');
+      } catch (err) {
+        setErrors({ ...newErrors, api: err.message || 'Failed to save. Please try again.' });
+      } finally {
+        setIsSubmitting(false);
+      }
     }
   };
 
@@ -240,10 +254,12 @@ export default function ProfileSetupStep2Screen({ navigation }) {
               <LookingForButton label="Still exploring" icon="search-outline" active={relationshipType === 'Still exploring'} onPress={() => setRelationshipType('Still exploring')} />
             </View>
 
-            <TouchableOpacity onPress={handleComplete} activeOpacity={0.8}>
-              <LinearGradient colors={[COLORS.maroon, COLORS.burgundy]} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.primaryBtn}>
-                <Text style={styles.primaryBtnText}>Next Step</Text>
-                <Ionicons name="arrow-forward" size={W * 0.05} color="#fff" style={{ marginLeft: 8 }} />
+            {errors.api ? <Text style={[styles.errorText, { textAlign: 'center', marginLeft: 0, marginBottom: 10 }]}>{errors.api}</Text> : null}
+
+            <TouchableOpacity onPress={handleComplete} activeOpacity={0.8} disabled={isSubmitting}>
+              <LinearGradient colors={isSubmitting ? ['rgba(255,255,255,0.1)', 'rgba(255,255,255,0.15)'] : [COLORS.maroon, COLORS.burgundy]} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.primaryBtn}>
+                <Text style={styles.primaryBtnText}>{isSubmitting ? 'Saving...' : 'Next Step'}</Text>
+                {!isSubmitting && <Ionicons name="arrow-forward" size={W * 0.05} color="#fff" style={{ marginLeft: 8 }} />}
               </LinearGradient>
             </TouchableOpacity>
 
@@ -286,7 +302,7 @@ const styles = StyleSheet.create({
   listItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.03)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
     borderRadius: W * 0.035,
@@ -313,7 +329,7 @@ const styles = StyleSheet.create({
   errorText: { color: '#FF4D67', fontSize: 12, marginTop: 4, marginBottom: W * 0.03, marginLeft: 8 },
 
   dropdownList: {
-    backgroundColor: 'rgba(255,255,255,0.03)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)',
     borderTopWidth: 0,
     borderBottomLeftRadius: W * 0.035,
@@ -327,13 +343,13 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)',
   },
   dropdownOptionText: { fontSize: W * 0.035, color: COLORS.taupe },
-  dropdownOptionTextActive: { color: COLORS.maroon, fontWeight: 'bold' },
+  dropdownOptionTextActive: { color: '#fff', fontWeight: 'bold' },
 
   lookingGrid: { flexDirection: 'row', justifyContent: 'space-between', gap: 8, marginBottom: W * 0.08 },
   lookingBtn: {
     flex: 1,
     aspectRatio: 1,
-    backgroundColor: 'rgba(255,255,255,0.03)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)',
     borderRadius: 12,
     justifyContent: 'center', alignItems: 'center',

@@ -14,8 +14,10 @@ export default function SignUpScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errors, setErrors] = useState({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { signUp } = useAuth();
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
     let valid = true;
     let newErrors = {};
 
@@ -29,10 +31,18 @@ export default function SignUpScreen({ navigation }) {
 
     setErrors(newErrors);
     if (valid) {
-      navigation.navigate('ProfileSetupStep1');
+      try {
+        setIsSubmitting(true);
+        await signUp(name.trim(), email.trim(), password);
+        // RootNavigator automatically navigates to ProfileSetup
+        // because user.isProfileComplete === false
+      } catch (err) {
+        setErrors({ ...newErrors, api: err.message || 'Registration failed. Please try again.' });
+      } finally {
+        setIsSubmitting(false);
+      }
     }
   };
-  // const { signUp } = useAuth(); // We'll call this after profile setup is complete
 
   return (
     <View style={styles.screen}>
@@ -88,9 +98,11 @@ export default function SignUpScreen({ navigation }) {
           </View>
           {errors.password ? <Text style={styles.errorText}>{errors.password}</Text> : null}
 
-          <TouchableOpacity onPress={handleContinue} activeOpacity={0.8}>
-            <LinearGradient colors={[COLORS.maroon, COLORS.burgundy]} style={styles.primaryBtn}>
-              <Text style={styles.primaryBtnText}>Continue</Text>
+          {errors.api ? <Text style={[styles.errorText, { textAlign: 'center', marginLeft: 0 }]}>{errors.api}</Text> : null}
+
+          <TouchableOpacity onPress={handleContinue} activeOpacity={0.8} disabled={isSubmitting}>
+            <LinearGradient colors={isSubmitting ? ['rgba(255,255,255,0.1)', 'rgba(255,255,255,0.15)'] : [COLORS.maroon, COLORS.burgundy]} style={styles.primaryBtn}>
+              <Text style={styles.primaryBtnText}>{isSubmitting ? 'Creating Account...' : 'Continue'}</Text>
             </LinearGradient>
           </TouchableOpacity>
         </BlurView>

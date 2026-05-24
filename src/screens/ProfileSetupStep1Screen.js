@@ -10,6 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { COLORS } from '../theme/colors';
 import { validateRequired } from '../utils/validators';
+import { useAuth } from '../context/AuthContext';
 
 const { width: W } = Dimensions.get('window');
 
@@ -78,23 +79,25 @@ const SelectionButton = ({ label, icon, active, onPress, style }) => (
 );
 
 export default function ProfileSetupStep1Screen({ navigation }) {
-  const [gender, setGender] = useState('Female');
-  const [dob, setDob] = useState(null);
+  const { user, updateProfileStep } = useAuth();
+  const [gender, setGender] = useState(user?.gender || 'Female');
+  const [dob, setDob] = useState(user?.dob ? new Date(user.dob) : null);
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [zodiac, setZodiac] = useState('');
+  const [zodiac, setZodiac] = useState(user?.zodiac || '');
   const [zodiacOpen, setZodiacOpen] = useState(false);
-  const [occupation, setOccupation] = useState('');
-  const [isStudent, setIsStudent] = useState('Yes');
-  const [college, setCollege] = useState('');
-  const [location, setLocation] = useState('');
-  const [height, setHeight] = useState('');
-  const [weight, setWeight] = useState('');
+  const [occupation, setOccupation] = useState(user?.occupation || '');
+  const [isStudent, setIsStudent] = useState(user?.isStudent || 'Yes');
+  const [college, setCollege] = useState(user?.college || '');
+  const [location, setLocation] = useState(user?.location || '');
+  const [height, setHeight] = useState(user?.height || '');
+  const [weight, setWeight] = useState(user?.weight || '');
   
-  const [heightUnit, setHeightUnit] = useState('ft');
-  const [weightUnit, setWeightUnit] = useState('kg');
+  const [heightUnit, setHeightUnit] = useState(user?.heightUnit || 'ft');
+  const [weightUnit, setWeightUnit] = useState(user?.weightUnit || 'kg');
   const [errors, setErrors] = useState({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleNext = () => {
+  const handleNext = async () => {
     let valid = true;
     let newErrors = {};
 
@@ -111,7 +114,27 @@ export default function ProfileSetupStep1Screen({ navigation }) {
 
     setErrors(newErrors);
     if (valid) {
-      navigation.navigate('ProfileSetupStep2');
+      try {
+        setIsSubmitting(true);
+        await updateProfileStep({
+          gender,
+          dob,
+          zodiac,
+          occupation,
+          isStudent,
+          college,
+          location,
+          height,
+          weight,
+          heightUnit,
+          weightUnit,
+        });
+        navigation.navigate('ProfileSetupStep2');
+      } catch (err) {
+        setErrors({ ...newErrors, api: err.message || 'Failed to save. Please try again.' });
+      } finally {
+        setIsSubmitting(false);
+      }
     }
   };
 
@@ -325,10 +348,12 @@ export default function ProfileSetupStep1Screen({ navigation }) {
               </View>
             </View>
 
-            <TouchableOpacity onPress={handleNext} activeOpacity={0.8} style={{ zIndex: 1 }}>
-              <LinearGradient colors={[COLORS.maroon, COLORS.burgundy]} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.primaryBtn}>
-                <Text style={styles.primaryBtnText}>Next Step</Text>
-                <Ionicons name="arrow-forward" size={W * 0.05} color="#fff" style={{ marginLeft: 8 }} />
+            {errors.api ? <Text style={[styles.errorText, { textAlign: 'center', marginLeft: 0, marginBottom: 10 }]}>{errors.api}</Text> : null}
+
+            <TouchableOpacity onPress={handleNext} activeOpacity={0.8} style={{ zIndex: 1 }} disabled={isSubmitting}>
+              <LinearGradient colors={isSubmitting ? ['rgba(255,255,255,0.1)', 'rgba(255,255,255,0.15)'] : [COLORS.maroon, COLORS.burgundy]} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.primaryBtn}>
+                <Text style={styles.primaryBtnText}>{isSubmitting ? 'Saving...' : 'Next Step'}</Text>
+                {!isSubmitting && <Ionicons name="arrow-forward" size={W * 0.05} color="#fff" style={{ marginLeft: 8 }} />}
               </LinearGradient>
             </TouchableOpacity>
 
@@ -365,7 +390,7 @@ const styles = StyleSheet.create({
   scrollContent: { paddingHorizontal: W * 0.06, paddingBottom: W * 0.1 },
   
   card: {
-    backgroundColor: 'rgba(255,255,255,0.03)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
     borderRadius: W * 0.04,
     padding: W * 0.045,
     marginBottom: W * 0.04,
@@ -380,7 +405,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingVertical: W * 0.035, paddingHorizontal: W * 0.03,
     borderRadius: W * 0.03, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
-    backgroundColor: 'rgba(255,255,255,0.01)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
   },
   selectBtnActive: { borderColor: '#FF4D67', backgroundColor: 'rgba(255, 77, 103, 0.05)' },
   selectBtnContent: { flexDirection: 'row', alignItems: 'center' },
@@ -409,7 +434,7 @@ const styles = StyleSheet.create({
   footerText: { color: 'rgba(255,255,255,0.4)', fontSize: 12, marginLeft: 6 },
   
   listItem: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.03)',
+    flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.08)',
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)', borderRadius: W * 0.035,
     padding: W * 0.04,
   },
@@ -423,7 +448,7 @@ const styles = StyleSheet.create({
   itemSubtitle: { fontSize: 12, color: 'rgba(255,255,255,0.4)' },
   
   dropdownList: {
-    backgroundColor: 'rgba(255,255,255,0.03)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)',
     borderTopWidth: 0, borderBottomLeftRadius: W * 0.035, borderBottomRightRadius: W * 0.035, overflow: 'hidden',
   },
   dropdownOption: {
@@ -431,5 +456,5 @@ const styles = StyleSheet.create({
     paddingVertical: W * 0.03, paddingHorizontal: W * 0.05, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)',
   },
   dropdownOptionText: { fontSize: W * 0.035, color: COLORS.taupe },
-  dropdownOptionTextActive: { color: COLORS.maroon, fontWeight: 'bold' },
+  dropdownOptionTextActive: { color: '#fff', fontWeight: 'bold' },
 });

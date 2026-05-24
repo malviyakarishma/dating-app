@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity,
+  View, Text, StyleSheet, TouchableOpacity, TextInput,
   Platform, Dimensions, ScrollView, Animated, Image
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -13,8 +13,12 @@ import * as ImagePicker from 'expo-image-picker';
 const { width: W } = Dimensions.get('window');
 
 export default function ProfileSetupStep3Screen({ navigation }) {
-  const [photos, setPhotos] = useState([]);
+  const { user, uploadPhotos, updateProfileStep } = useAuth();
+  const [photos, setPhotos] = useState(user?.photos || []);
+  const [bio, setBio] = useState(user?.bio || '');
   const [error, setError] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState('');
   
   const progressWidth = useRef(new Animated.Value(0)).current;
 
@@ -25,8 +29,6 @@ export default function ProfileSetupStep3Screen({ navigation }) {
       useNativeDriver: false
     }).start();
   }, []);
-
-  const { signUp } = useAuth();
 
   const handlePickImage = async () => {
     if (photos.length >= 6) {
@@ -53,25 +55,20 @@ export default function ProfileSetupStep3Screen({ navigation }) {
     }
   };
 
-  const handleRemovePhoto = (index) => {
-    const newPhotos = [...photos];
-    newPhotos.splice(index, 1);
-    setPhotos(newErrors);
-    if (newPhotos.length < 3) {
-      // Just let it be, they will see error on submit
-    } else {
-      setError(null);
-    }
-  };
-  
-  // Actually, fixing the above typo
   const removePhoto = (index) => {
     const newPhotos = [...photos];
     newPhotos.splice(index, 1);
     setPhotos(newPhotos);
-  }
+    if (newPhotos.length >= 3) {
+      setError(null);
+    }
+  };
 
-  const handleComplete = () => {
+  const handleComplete = async () => {
+    // Filter out already-uploaded Cloudinary URLs vs local URIs
+    const localPhotos = photos.filter(p => !p.startsWith('http'));
+    const alreadyUploaded = photos.filter(p => p.startsWith('http'));
+
     if (photos.length < 3) {
       setError("Please add at least 3 photos.");
       return;
@@ -81,8 +78,34 @@ export default function ProfileSetupStep3Screen({ navigation }) {
       return;
     }
     
-    setError(null);
-    signUp();
+    try {
+      setIsSubmitting(true);
+      setError(null);
+
+      // Upload local photos to Cloudinary in a batch
+      let uploadedUrls = [...alreadyUploaded];
+      if (localPhotos.length > 0) {
+        setUploadProgress('Uploading photos...');
+        const newUrls = await uploadPhotos(localPhotos);
+        uploadedUrls = [...uploadedUrls, ...newUrls];
+      }
+
+      // Save photos + bio to profile (this will set isProfileComplete = true)
+      setUploadProgress('Completing profile...');
+      await updateProfileStep({
+        photos: uploadedUrls,
+        bio: bio.trim() || undefined,
+      });
+
+      // RootNavigator automatically switches to main app
+      // because user.isProfileComplete is now true
+    } catch (err) {
+      console.error('Registration Complete Error:', err);
+      setError(err.message || "Registration failed. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+      setUploadProgress('');
+    }
   };
 
   return (
@@ -156,11 +179,29 @@ export default function ProfileSetupStep3Screen({ navigation }) {
             
             {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-            <View style={{ marginTop: W * 0.08 }}>
-              <TouchableOpacity onPress={handleComplete} activeOpacity={0.8}>
-                <LinearGradient colors={[COLORS.maroon, COLORS.burgundy]} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.primaryBtn}>
-                  <Text style={styles.primaryBtnText}>Complete Profile</Text>
-                  <Ionicons name="checkmark-circle" size={W * 0.05} color="#fff" style={{ marginLeft: 8 }} />
+            {/* Bio Section */}
+            <View style={styles.bioSection}>
+              <Text style={styles.bioLabel}>About You (Optional)</Text>
+              <TextInput
+                style={styles.bioInput}
+                placeholder="Write a short bio about yourself..."
+                placeholderTextColor="rgba(255,255,255,0.35)"
+                value={bio}
+                onChangeText={setBio}
+                multiline
+                maxLength={500}
+                textAlignVertical="top"
+              />
+              <Text style={styles.bioCharCount}>{bio.length}/500</Text>
+            </View>
+
+            {uploadProgress ? <Text style={styles.progressText}>{uploadProgress}</Text> : null}
+
+            <View style={{ marginTop: W * 0.04 }}>
+              <TouchableOpacity onPress={handleComplete} activeOpacity={0.8} disabled={isSubmitting}>
+                <LinearGradient colors={isSubmitting ? ['rgba(255,255,255,0.1)', 'rgba(255,255,255,0.15)'] : [COLORS.maroon, COLORS.burgundy]} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.primaryBtn}>
+                  <Text style={styles.primaryBtnText}>{isSubmitting ? (uploadProgress || 'Uploading...') : 'Complete Profile'}</Text>
+                  {!isSubmitting && <Ionicons name="checkmark-circle" size={W * 0.05} color="#fff" style={{ marginLeft: 8 }} />}
                 </LinearGradient>
               </TouchableOpacity>
             </View>
@@ -209,7 +250,7 @@ const styles = StyleSheet.create({
   },
   emptySlot: {
     flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.03)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
     borderStyle: 'dashed',
@@ -248,6 +289,21 @@ const styles = StyleSheet.create({
   },
 
   errorText: { color: '#FF4D67', fontSize: 12, marginTop: 4, textAlign: 'center' },
+  progressText: { color: COLORS.taupe, fontSize: 13, textAlign: 'center', marginTop: 8, marginBottom: 4 },
+
+  bioSection: { marginTop: W * 0.06 },
+  bioLabel: { color: '#fff', fontSize: W * 0.04, fontWeight: '600', marginBottom: 8 },
+  bioInput: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 12,
+    padding: W * 0.04,
+    color: '#fff',
+    fontSize: W * 0.035,
+    minHeight: 100,
+  },
+  bioCharCount: { color: 'rgba(255,255,255,0.3)', fontSize: 11, textAlign: 'right', marginTop: 4 },
 
   primaryBtn: {
     paddingVertical: W * 0.04, borderRadius: W * 0.07,

@@ -11,7 +11,26 @@ const { width: W } = Dimensions.get('window');
 export default function SignInScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [error, setError] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const { signIn } = useAuth();
+
+  const handleSignIn = async () => {
+    if (!email || !password) {
+      setError('Please fill in all fields');
+      return;
+    }
+    
+    try {
+      setIsSubmitting(true);
+      setError(null);
+      await signIn(email.trim(), password);
+    } catch (err) {
+      setError(err.message || 'Login failed. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <View style={styles.screen}>
@@ -61,13 +80,15 @@ export default function SignInScreen({ navigation }) {
             />
           </View>
 
+          {error ? <Text style={{ color: '#FF4D67', fontSize: 12, marginBottom: 12, textAlign: 'center' }}>{error}</Text> : null}
+
           <TouchableOpacity style={styles.forgotPassword} onPress={() => navigation.navigate('ForgotPassword')}>
             <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity onPress={() => signIn()} activeOpacity={0.8}>
-            <LinearGradient colors={[COLORS.maroon, COLORS.burgundy]} style={styles.primaryBtn}>
-              <Text style={styles.primaryBtnText}>Sign In</Text>
+          <TouchableOpacity onPress={handleSignIn} activeOpacity={0.8} disabled={isSubmitting}>
+            <LinearGradient colors={isSubmitting ? ['rgba(255,255,255,0.1)', 'rgba(255,255,255,0.15)'] : [COLORS.maroon, COLORS.burgundy]} style={styles.primaryBtn}>
+              <Text style={styles.primaryBtnText}>{isSubmitting ? 'Signing In...' : 'Sign In'}</Text>
             </LinearGradient>
           </TouchableOpacity>
         </BlurView>

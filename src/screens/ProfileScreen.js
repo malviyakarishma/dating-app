@@ -1,26 +1,41 @@
 import React from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, Dimensions, Platform, ScrollView,
+  View, Text, StyleSheet, TouchableOpacity, Dimensions, Platform, ScrollView, Image
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../theme/colors';
 import { useAuth } from '../context/AuthContext';
+import { useNavigation } from '@react-navigation/native';
 
 const { width: W } = Dimensions.get('window');
 const AVATAR_SIZE = W * 0.28;
 
 const menuItems = [
-  { icon: 'settings-outline', label: 'Settings' },
-  { icon: 'create-outline', label: 'Edit Profile' },
-  { icon: 'shield-checkmark-outline', label: 'Privacy' },
-  { icon: 'notifications-outline', label: 'Notifications' },
-  { icon: 'help-circle-outline', label: 'Help & Support' },
+  { icon: 'settings-outline', label: 'Settings', route: null },
+  { icon: 'create-outline', label: 'Edit Profile', route: 'EditProfile' },
+  { icon: 'shield-checkmark-outline', label: 'Privacy', route: null },
+  { icon: 'notifications-outline', label: 'Notifications', route: null },
+  { icon: 'help-circle-outline', label: 'Help & Support', route: null },
 ];
 
 export default function ProfileScreen() {
-  const { signOut } = useAuth();
+  const { user, signOut } = useAuth();
+  const navigation = useNavigation();
+
+  const calculateAge = (dobString) => {
+    if (!dobString) return '';
+    const diff = Date.now() - new Date(dobString).getTime();
+    const ageDate = new Date(diff);
+    return Math.abs(ageDate.getUTCFullYear() - 1970);
+  };
+
+  const handleMenuPress = (route) => {
+    if (route) {
+      navigation.navigate(route);
+    }
+  };
 
   return (
     <View style={styles.screen}>
@@ -30,13 +45,6 @@ export default function ProfileScreen() {
         style={StyleSheet.absoluteFill}
       />
 
-      {/* Header */}
-      <View style={styles.headerWrap}>
-        <BlurView intensity={40} tint="dark" style={[styles.header, { overflow: 'hidden' }]}>
-          <Text style={styles.headerText}>Profile</Text>
-        </BlurView>
-      </View>
-
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Avatar Section */}
         <View style={styles.avatarSection}>
@@ -45,11 +53,15 @@ export default function ProfileScreen() {
             style={styles.avatarRing}
           >
             <View style={styles.avatarInner}>
-              <Ionicons name="person" size={AVATAR_SIZE * 0.4} color={COLORS.taupe} />
+              {user?.photos && user.photos.length > 0 ? (
+                <Image source={{ uri: user.photos[0] }} style={styles.avatarImage} />
+              ) : (
+                <Ionicons name="person" size={AVATAR_SIZE * 0.4} color={COLORS.taupe} />
+              )}
             </View>
           </LinearGradient>
-          <Text style={styles.name}>John Doe, 26</Text>
-          <Text style={styles.job}>Software Engineer</Text>
+          <Text style={styles.name}>{user?.name}{user?.dob ? `, ${calculateAge(user.dob)}` : ''}</Text>
+          <Text style={styles.job}>{user?.occupation || 'No occupation listed'}</Text>
 
           {/* Stats Row */}
           <View style={styles.statsRow}>
@@ -69,7 +81,7 @@ export default function ProfileScreen() {
         {/* Menu Items */}
         <View style={styles.menuSection}>
           {menuItems.map((item, i) => (
-            <TouchableOpacity key={i} activeOpacity={0.7}>
+            <TouchableOpacity key={i} activeOpacity={0.7} onPress={() => handleMenuPress(item.route)}>
               <BlurView intensity={25} tint="dark" style={[styles.menuItem, { overflow: 'hidden' }]}>
                 <Ionicons name={item.icon} size={W * 0.055} color={COLORS.cream} />
                 <Text style={styles.menuText}>{item.label}</Text>
@@ -98,11 +110,11 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#0d0507' },
   headerWrap: { paddingTop: Platform.OS === 'ios' ? 54 : 40, paddingHorizontal: W * 0.04 },
   header: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
     borderRadius: W * 0.04, padding: W * 0.04,
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
   },
-  headerText: { fontSize: W * 0.065, fontWeight: 'bold', color: '#fff' },
-  scrollContent: { paddingBottom: 40 },
+  scrollContent: { paddingBottom: 40, paddingTop: Platform.OS === 'ios' ? 80 : 60 },
 
   // Avatar
   avatarSection: { alignItems: 'center', marginTop: W * 0.06 },
@@ -112,8 +124,9 @@ const styles = StyleSheet.create({
   },
   avatarInner: {
     width: AVATAR_SIZE, height: AVATAR_SIZE, borderRadius: AVATAR_SIZE / 2,
-    backgroundColor: '#1a0a0e', justifyContent: 'center', alignItems: 'center',
+    backgroundColor: '#1a0a0e', justifyContent: 'center', alignItems: 'center', overflow: 'hidden'
   },
+  avatarImage: { width: '100%', height: '100%' },
   name: { fontSize: W * 0.06, fontWeight: 'bold', color: '#fff', marginTop: W * 0.04 },
   job: { fontSize: W * 0.038, color: COLORS.taupe, marginTop: 4 },
 
@@ -123,6 +136,7 @@ const styles = StyleSheet.create({
     marginTop: W * 0.06, paddingHorizontal: W * 0.04,
   },
   statCard: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
     flex: 1, alignItems: 'center', paddingVertical: W * 0.04,
     borderRadius: W * 0.04, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
   },
@@ -132,6 +146,7 @@ const styles = StyleSheet.create({
   // Menu
   menuSection: { paddingHorizontal: W * 0.04, marginTop: W * 0.06, gap: W * 0.025 },
   menuItem: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
     flexDirection: 'row', alignItems: 'center',
     padding: W * 0.04, borderRadius: W * 0.04,
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',

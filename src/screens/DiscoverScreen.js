@@ -1,78 +1,32 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, Image, TouchableOpacity,
-  Dimensions, Modal, StatusBar, Platform, Animated, PanResponder, ScrollView
+  Dimensions, Modal, StatusBar, Platform, Animated, PanResponder, ScrollView, ActivityIndicator
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../theme/colors';
+import * as userService from '../services/userService.js';
+import * as swipeService from '../services/swipeService.js';
 
 const { width: W, height: H } = Dimensions.get('window');
 const SWIPE_THRESHOLD = W * 0.3;
 
-const PROFILES = [
-  {
-    id: '1', name: 'Ananya', age: 24, gender: 'Female', zodiac: 'Gemini', relationshipType: 'Long-term',
-    job: 'UX Designer', education: 'NID Ahmedabad',
-    hometown: 'Mumbai', height: "5'6\"", weight: "55",
-    photos: [
-      require('../../assets/profile1.png'),
-      require('../../assets/profile2.png'),
-      require('../../assets/profile3.png'),
-      
-    ],
-    bio: 'Sunset hikes, masala chai, and deep conversations about the universe ✨',
-    music: 'Indie', movies: 'Sci-Fi', date: 'Museum date and coffee', food: 'Sushi',
-  },
-  {
-    id: '2', name: 'Arjun', age: 27, gender: 'Male', zodiac: 'Leo', relationshipType: 'Short-term',
-    job: 'Software Engineer', education: 'IIT Delhi',
-    hometown: 'Bangalore', height: "5'11\"", weight: "75",
-    photos: [
-      require('../../assets/profile2.png'),
-      require('../../assets/profile3.png'),
-      require('../../assets/profile1.png')
-    ],
-    bio: 'Morning runs, vinyl records, and perfectly brewed pour-over coffee ☕',
-    music: 'Rock', movies: 'Action', date: 'Live band performance', food: 'Italian',
-  },
-  {
-    id: '3', name: 'Priya', age: 23, gender: 'Female', zodiac: 'Libra', relationshipType: 'Still exploring',
-    job: 'Marketing Lead', education: "St. Xavier's College",
-    hometown: 'Delhi', height: "5'4\"", weight: "50",
-    photos: [
-      require('../../assets/profile3.png'),
-      require('../../assets/profile1.png'),
-      require('../../assets/profile2.png')
-    ],
-    bio: 'Spontaneous road trips, sharing desserts, and never skipping the aux cord 🎵',
-    music: 'Pop', movies: 'Comedy', date: 'Late night drive', food: 'Desserts',
-  },
-  {
-    id: '4', name: 'Yogesh', age: 22, gender: 'male', zodiac: 'Gemini', relationshipType: 'Long-term',
-    job: 'UX Designer', education: 'NID Ahmedabad',
-    hometown: 'Mumbai', height: "5'6\"", weight: "55",
-    photos: [
-      
-      require('../../assets/profile5.jpeg'),
-      require('../../assets/profile6.jpeg'),
-      require('../../assets/profile7.jpeg'),
-    
-      
-    ],
-    bio: 'Sunrise hikes, sutta chai, and funny conversations',
-    music: 'Indie', movies: 'Sci-Fi', date: 'Museum date and coffee', food: 'Sushi',
-  },
-];
+const resolveImageSource = (photo) => {
+  if (typeof photo === 'string') {
+    return { uri: photo };
+  }
+  return photo;
+};
 
 const SwipeCard = ({ profile, isTop, onSwipeComplete, nextProfile }) => {
   const pan = useRef(new Animated.ValueXY()).current;
   const cardScale = useRef(new Animated.Value(isTop ? 1 : 0.92)).current;
   const cardOpacity = useRef(new Animated.Value(isTop ? 1 : 0.7)).current;
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (isTop) {
       Animated.parallel([
         Animated.spring(cardScale, { toValue: 1, friction: 6, useNativeDriver: true }),
@@ -89,7 +43,6 @@ const SwipeCard = ({ profile, isTop, onSwipeComplete, nextProfile }) => {
   const panResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_, gestureState) => {
-        // Only set pan responder for horizontal swipes (threshold > 10)
         return Math.abs(gestureState.dx) > Math.abs(gestureState.dy) && Math.abs(gestureState.dx) > 10;
       },
       onPanResponderMove: (_, gestureState) => {
@@ -142,6 +95,9 @@ const SwipeCard = ({ profile, isTop, onSwipeComplete, nextProfile }) => {
 
   if (!isTop && !nextProfile) return null;
 
+  const occupationText = profile.occupation || profile.job || 'User';
+  const collegeText = profile.college || profile.education || '';
+
   return (
     <Animated.View
       {...(isTop ? panResponder.panHandlers : {})}
@@ -158,15 +114,21 @@ const SwipeCard = ({ profile, isTop, onSwipeComplete, nextProfile }) => {
     >
       <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
         <View style={styles.coverPhotoWrap}>
-          <Image source={profile.photos[0]} style={styles.cardImage} />
+          {profile.photos && profile.photos.length > 0 ? (
+            <Image source={resolveImageSource(profile.photos[0])} style={styles.cardImage} />
+          ) : (
+            <View style={[styles.cardImage, { backgroundColor: COLORS.maroon, justifyContent: 'center', alignItems: 'center' }]}>
+              <Ionicons name="person" size={100} color="rgba(255,255,255,0.2)" />
+            </View>
+          )}
           <LinearGradient colors={['transparent', 'rgba(0,0,0,0.7)', '#1a0a0e']} locations={[0.4, 0.8, 1]} style={styles.cardGradient} />
           <View style={styles.cardContent}>
             <View style={styles.nameRow}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.cardName}>{profile.name}, {profile.age}</Text>
+                <Text style={styles.cardName}>{profile.name}, {profile.age || '20'}</Text>
               </View>
             </View>
-            <Text style={styles.cardBio} numberOfLines={2}>{profile.bio}</Text>
+            <Text style={styles.cardBio} numberOfLines={2}>{profile.bio || 'Hi! Let\'s connect.'}</Text>
           </View>
         </View>
 
@@ -175,40 +137,44 @@ const SwipeCard = ({ profile, isTop, onSwipeComplete, nextProfile }) => {
             <View style={styles.pill}><Ionicons name="male-female-outline" size={14} color="#fff" /><Text style={styles.pillText}>{profile.gender}</Text></View>
             <View style={styles.pill}><Ionicons name="moon-outline" size={14} color="#fff" /><Text style={styles.pillText}>{profile.zodiac}</Text></View>
             <View style={styles.pill}><Ionicons name="heart-outline" size={14} color="#fff" /><Text style={styles.pillText}>{profile.relationshipType}</Text></View>
-            <View style={styles.pill}><Ionicons name="location-outline" size={14} color="#fff" /><Text style={styles.pillText}>{profile.hometown}</Text></View>
+            <View style={styles.pill}><Ionicons name="location-outline" size={14} color="#fff" /><Text style={styles.pillText}>{profile.location}</Text></View>
           </View>
 
-          {profile.photos[1] && (
+          {profile.photos && profile.photos[1] && (
             <>
-              <Image source={profile.photos[1]} style={styles.secondaryPhoto} />
+              <Image source={resolveImageSource(profile.photos[1])} style={styles.secondaryPhoto} />
               <View style={styles.modalPrompt}>
                 <Text style={styles.modalQ}>Work & Education</Text>
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}><Ionicons name="briefcase-outline" size={16} color={COLORS.taupe} /><Text style={styles.modalA}> {profile.job}</Text></View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}><Ionicons name="school-outline" size={16} color={COLORS.taupe} /><Text style={styles.modalA}> {profile.education}</Text></View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}><Ionicons name="briefcase-outline" size={16} color={COLORS.taupe} /><Text style={styles.modalA}> {occupationText}</Text></View>
+                {collegeText ? <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}><Ionicons name="school-outline" size={16} color={COLORS.taupe} /><Text style={styles.modalA}> {collegeText}</Text></View> : null}
               </View>
               <View style={styles.modalPills}>
-                <View style={styles.pill}><Ionicons name="resize-outline" size={14} color="#fff" /><Text style={styles.pillText}>{profile.height}</Text></View>
-                <View style={styles.pill}><Ionicons name="barbell-outline" size={14} color="#fff" /><Text style={styles.pillText}>{profile.weight} kg</Text></View>
+                <View style={styles.pill}><Ionicons name="resize-outline" size={14} color="#fff" /><Text style={styles.pillText}>{profile.height} {profile.heightUnit || 'ft'}</Text></View>
+                <View style={styles.pill}><Ionicons name="barbell-outline" size={14} color="#fff" /><Text style={styles.pillText}>{profile.weight} {profile.weightUnit || 'kg'}</Text></View>
               </View>
             </>
           )}
 
-          {profile.photos[2] && (
+          {profile.photos && profile.photos[2] && (
             <>
-              <Image source={profile.photos[2]} style={styles.secondaryPhoto} />
+              <Image source={resolveImageSource(profile.photos[2])} style={styles.secondaryPhoto} />
               <View style={styles.modalPrompt}>
                 <Text style={styles.modalQ}>Interests</Text>
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}><Ionicons name="musical-notes-outline" size={16} color={COLORS.taupe} /><Text style={styles.modalA}> {profile.music}</Text></View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}><Ionicons name="film-outline" size={16} color={COLORS.taupe} /><Text style={styles.modalA}> {profile.movies}</Text></View>
               </View>
-              <View style={styles.modalPrompt}>
-                <Text style={styles.modalQ}>My ideal date</Text>
-                <Text style={[styles.modalA, { marginTop: 8 }]}>{profile.date}</Text>
-              </View>
-              <View style={styles.modalPrompt}>
-                <Text style={styles.modalQ}>Go-to food</Text>
-                <Text style={[styles.modalA, { marginTop: 8 }]}>{profile.food}</Text>
-              </View>
+              {profile.date ? (
+                <View style={styles.modalPrompt}>
+                  <Text style={styles.modalQ}>My ideal date</Text>
+                  <Text style={[styles.modalA, { marginTop: 8 }]}>{profile.date}</Text>
+                </View>
+              ) : null}
+              {profile.food ? (
+                <View style={styles.modalPrompt}>
+                  <Text style={styles.modalQ}>Go-to food</Text>
+                  <Text style={[styles.modalA, { marginTop: 8 }]}>{profile.food}</Text>
+                </View>
+              ) : null}
             </>
           )}
           <View style={{ height: 60 }} />
@@ -225,11 +191,50 @@ const SwipeCard = ({ profile, isTop, onSwipeComplete, nextProfile }) => {
   );
 };
 
-export default function DiscoverScreen() {
+export default function DiscoverScreen({ navigation }) {
+  const [profiles, setProfiles] = useState([]);
   const [currentIdx, setCurrentIdx] = useState(0);
-  const handleSwipe = useCallback((dir) => { setCurrentIdx(prev => prev + 1); }, []);
-  const hasProfiles = currentIdx < PROFILES.length;
+  const [loading, setLoading] = useState(true);
+  const [matchedUser, setMatchedUser] = useState(null);
+  const [isMatchModalVisible, setMatchModalVisible] = useState(false);
+  
   const insets = useSafeAreaInsets();
+
+  const fetchProfiles = async () => {
+    try {
+      setLoading(true);
+      const res = await userService.getDiscovery();
+      setProfiles(res.data.profiles);
+      setCurrentIdx(0);
+    } catch (err) {
+      console.error('Failed to load discovery profiles:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchProfiles();
+  }, []);
+
+  const handleSwipe = useCallback(async (dir) => {
+    const swipedProfile = profiles[currentIdx];
+    if (swipedProfile) {
+      const status = dir === 'right' ? 'like' : 'dislike';
+      try {
+        const res = await swipeService.swipe(swipedProfile.id || swipedProfile._id, status);
+        if (res.data.isMatch) {
+          setMatchedUser(res.data.matchedUser);
+          setMatchModalVisible(true);
+        }
+      } catch (err) {
+        console.error('Swipe action failed:', err);
+      }
+    }
+    setCurrentIdx(prev => prev + 1);
+  }, [profiles, currentIdx]);
+
+  const hasProfiles = currentIdx < profiles.length;
 
   return (
     <View style={styles.screen}>
@@ -238,32 +243,87 @@ export default function DiscoverScreen() {
 
       <View style={[styles.headerWrap, { paddingTop: insets.top + W * 0.03, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: W * 0.02 }]}>
         <Text style={styles.headerTitle}>Find your one</Text>
-        <TouchableOpacity style={styles.filterBtn}>
-          <Ionicons name="options-outline" size={W * 0.055} color={COLORS.cream} />
+        <TouchableOpacity style={styles.filterBtn} onPress={fetchProfiles}>
+          <Ionicons name="refresh-outline" size={W * 0.055} color={COLORS.cream} />
         </TouchableOpacity>
       </View>
 
       <View style={styles.cardStack}>
-        {hasProfiles ? (
+        {loading ? (
+          <ActivityIndicator size="large" color="#FF4D67" style={{ marginTop: H * 0.25 }} />
+        ) : hasProfiles ? (
           <>
-            {currentIdx + 1 < PROFILES.length && (
-              <SwipeCard key={PROFILES[currentIdx + 1].id + '-b'} profile={PROFILES[currentIdx + 1]} isTop={false} nextProfile={true} onSwipeComplete={() => {}} />
+            {currentIdx + 1 < profiles.length && (
+              <SwipeCard key={profiles[currentIdx + 1].id + '-b'} profile={profiles[currentIdx + 1]} isTop={false} nextProfile={true} onSwipeComplete={() => {}} />
             )}
-            <SwipeCard key={PROFILES[currentIdx].id} profile={PROFILES[currentIdx]} isTop={true} nextProfile={false} onSwipeComplete={handleSwipe} />
+            <SwipeCard key={profiles[currentIdx].id} profile={profiles[currentIdx]} isTop={true} nextProfile={false} onSwipeComplete={handleSwipe} />
           </>
         ) : (
           <BlurView intensity={50} tint="dark" style={[styles.emptyBlur, { overflow: 'hidden' }]}>
             <Ionicons name="heart-dislike-outline" size={W * 0.14} color={COLORS.taupe} />
             <Text style={styles.emptyTitle}>No more profiles</Text>
             <Text style={styles.emptySub}>Check back later for new people</Text>
-            <TouchableOpacity onPress={() => setCurrentIdx(0)}>
+            <TouchableOpacity onPress={fetchProfiles}>
               <LinearGradient colors={[COLORS.maroon, COLORS.burgundy]} style={styles.restartBtn}>
-                <Text style={styles.restartText}>Start Over</Text>
+                <Text style={styles.restartText}>Refresh Feed</Text>
               </LinearGradient>
             </TouchableOpacity>
           </BlurView>
         )}
       </View>
+
+      {/* Match Overlay Modal */}
+      <Modal
+        visible={isMatchModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setMatchModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <BlurView intensity={80} tint="dark" style={[styles.modalOverlayBlur, StyleSheet.absoluteFillObject]}>
+            <LinearGradient colors={['rgba(26,10,14,0.9)', 'rgba(13,5,7,0.95)']} style={styles.matchModalWrap}>
+              <Ionicons name="sparkles" size={50} color="#FFD700" style={{ marginBottom: 15 }} />
+              <Text style={styles.matchTitle}>It's a Match! 🎉</Text>
+              <Text style={styles.matchSubtitle}>You and {matchedUser?.name} liked each other.</Text>
+
+              <View style={styles.avatarRow}>
+                {matchedUser?.photos && matchedUser.photos[0] ? (
+                  <Image source={resolveImageSource(matchedUser.photos[0])} style={styles.matchAvatar} />
+                ) : (
+                  <View style={[styles.matchAvatar, { backgroundColor: COLORS.maroon, justifyContent: 'center', alignItems: 'center' }]}>
+                    <Ionicons name="person" size={40} color="#fff" />
+                  </View>
+                )}
+              </View>
+
+              <TouchableOpacity
+                onPress={() => {
+                  setMatchModalVisible(false);
+                  navigation.navigate('Messages', {
+                    screen: 'ChatDM',
+                    params: { userName: matchedUser?.name, otherUserId: matchedUser?.id || matchedUser?._id },
+                  });
+                }}
+                activeOpacity={0.8}
+                style={{ width: '100%', marginBottom: 12 }}
+              >
+                <LinearGradient colors={[COLORS.maroon, COLORS.burgundy]} style={styles.matchBtn}>
+                  <Ionicons name="chatbubble-ellipses-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
+                  <Text style={styles.matchBtnText}>Send Message</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => setMatchModalVisible(false)}
+                activeOpacity={0.8}
+                style={styles.keepSwipingBtn}
+              >
+                <Text style={styles.keepSwipingText}>Keep Swiping</Text>
+              </TouchableOpacity>
+            </LinearGradient>
+          </BlurView>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -273,7 +333,7 @@ const styles = StyleSheet.create({
   headerWrap: { paddingHorizontal: W * 0.05 },
   headerTitle: { 
     fontSize: W * 0.085, 
-    fontFamily: 'BricolageGrotesque_700Bold',
+    fontWeight: 'bold',
     color: '#ffffff', 
   },
   filterBtn: { padding: W * 0.025, borderRadius: W * 0.03, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', backgroundColor: 'rgba(255,255,255,0.05)' },
@@ -321,9 +381,22 @@ const styles = StyleSheet.create({
   modalQ: { fontSize: W * 0.03, fontWeight: '700', color: '#FF4D67', textTransform: 'uppercase', letterSpacing: 1 },
   modalA: { fontSize: W * 0.04, color: '#fff', fontWeight: '500' },
   
-  emptyBlur: { borderRadius: W * 0.06, padding: W * 0.1, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', width: W - W * 0.16 },
+  emptyBlur: { borderRadius: W * 0.06, padding: W * 0.1, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', width: W - W * 0.16, marginTop: H * 0.1 },
   emptyTitle: { fontSize: W * 0.055, fontWeight: 'bold', color: '#fff', marginTop: W * 0.04 },
   emptySub: { fontSize: W * 0.035, color: COLORS.taupe, marginTop: W * 0.02, textAlign: 'center' },
   restartBtn: { paddingVertical: W * 0.035, paddingHorizontal: W * 0.1, borderRadius: W * 0.06, marginTop: W * 0.06 },
   restartText: { color: COLORS.cream, fontSize: W * 0.04, fontWeight: 'bold' },
+
+  // Match Modal
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'center', alignItems: 'center' },
+  modalOverlayBlur: { justifyContent: 'center', alignItems: 'center' },
+  matchModalWrap: { width: W * 0.85, padding: W * 0.08, borderRadius: 24, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', alignItems: 'center' },
+  matchTitle: { fontSize: 28, fontWeight: 'bold', color: '#fff', marginBottom: 10 },
+  matchSubtitle: { fontSize: 14, color: COLORS.taupe, textAlign: 'center', marginBottom: 20 },
+  avatarRow: { flexDirection: 'row', justifyContent: 'center', marginBottom: 30 },
+  matchAvatar: { width: 100, height: 100, borderRadius: 50, borderWidth: 3, borderColor: '#FF4D67' },
+  matchBtn: { paddingVertical: 14, borderRadius: 30, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', width: '100%' },
+  matchBtnText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  keepSwipingBtn: { paddingVertical: 12, alignItems: 'center' },
+  keepSwipingText: { color: COLORS.taupe, fontSize: 14, fontWeight: '600' },
 });
