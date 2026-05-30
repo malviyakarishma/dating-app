@@ -14,7 +14,7 @@ export default function RootNavigator() {
   const { userToken, user } = useAuth();
 
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
+    <Stack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#0d0507' } }}>
       {userToken == null ? (
         // No token → user isn't signed in
         <Stack.Screen
@@ -32,8 +32,16 @@ export default function RootNavigator() {
         // Fully authenticated and profile complete → main app
         <Stack.Group>
           <Stack.Screen name="Main" component={TabNavigator} />
-          <Stack.Screen name="ChatDM" component={ChatDMScreen} />
-          <Stack.Screen name="EditProfile" component={EditProfileScreen} />
+          <Stack.Screen 
+            name="ChatDM" 
+            component={ChatDMScreen} 
+            options={{ contentStyle: { backgroundColor: '#0d0507' } }} 
+          />
+          <Stack.Screen 
+            name="EditProfile" 
+            component={EditProfileScreen} 
+            options={{ contentStyle: { backgroundColor: '#0d0507' } }} 
+          />
         </Stack.Group>
       )}
     </Stack.Navigator>

@@ -1,9 +1,17 @@
 import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider } from './src/context/AuthContext';
 import RootNavigator from './src/navigation/RootNavigator';
 import { useFonts, BricolageGrotesque_400Regular, BricolageGrotesque_700Bold } from '@expo-google-fonts/bricolage-grotesque';
+
+const DarkDatingAppTheme = {
+  ...DefaultTheme,
+  colors: {
+    ...DefaultTheme.colors,
+    background: '#0d0507',
+  },
+};
 
 export default function App() {
   let [fontsLoaded] = useFonts({
@@ -18,7 +26,7 @@ export default function App() {
   return (
     <AuthProvider>
       <SafeAreaProvider>
-        <NavigationContainer>
+        <NavigationContainer theme={DarkDatingAppTheme}>
           <RootNavigator />
         </NavigationContainer>
       </SafeAreaProvider>

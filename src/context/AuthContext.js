@@ -2,6 +2,8 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as authService from '../services/authService.js';
 import * as userService from '../services/userService.js';
+import { onUnauthorized } from '../services/apiClient.js';
+import { initSocket, disconnectSocket } from '../services/socket.js';
 
 const AuthContext = createContext(null);
 
@@ -10,6 +12,19 @@ export function AuthProvider({ children }) {
   const [refreshToken, setRefreshToken] = useState(null);
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    onUnauthorized(async () => {
+      console.log('Session expired, triggering automatic logout...');
+      disconnectSocket();
+      await AsyncStorage.removeItem('userToken');
+      await AsyncStorage.removeItem('refreshToken');
+      await AsyncStorage.removeItem('user');
+      setUserToken(null);
+      setRefreshToken(null);
+      setUser(null);
+    });
+  }, []);
 
   useEffect(() => {
     const loadTokens = async () => {
@@ -26,6 +41,7 @@ export function AuthProvider({ children }) {
 
           // Verify token and sync user state with backend
           try {
+            initSocket();
             const result = await userService.getProfile(storedToken);
             if (result.data && result.data.user) {
               setUser(result.data.user);
@@ -33,6 +49,7 @@ export function AuthProvider({ children }) {
             }
           } catch (err) {
             console.log('Token invalid or user deleted, clearing local storage...');
+            disconnectSocket();
             await AsyncStorage.removeItem('userToken');
             await AsyncStorage.removeItem('refreshToken');
             await AsyncStorage.removeItem('user');
@@ -63,6 +80,7 @@ export function AuthProvider({ children }) {
       setUserToken(tokens.access.token);
       setRefreshToken(tokens.refresh.token);
       setUser(loggedInUser);
+      initSocket();
       return { success: true };
     } catch (error) {
       console.error('Sign In Error:', error);
@@ -85,6 +103,7 @@ export function AuthProvider({ children }) {
       setUserToken(tokens.access.token);
       setRefreshToken(tokens.refresh.token);
       setUser(newUser);
+      initSocket();
       return { success: true };
     } catch (error) {
       console.error('Sign Up Error:', error);
@@ -101,6 +120,7 @@ export function AuthProvider({ children }) {
     } catch (e) {
       console.warn('Backend logout call failed', e);
     } finally {
+      disconnectSocket();
       await AsyncStorage.removeItem('userToken');
       await AsyncStorage.removeItem('refreshToken');
       await AsyncStorage.removeItem('user');
@@ -135,6 +155,24 @@ export function AuthProvider({ children }) {
       return result.data.urls;
     } catch (error) {
       console.error('Upload Photos Error:', error);
+      throw error;
+    }
+  };
+
+  // ─── Delete Photo (DELETE /api/users/photo → Cloudinary + DB) ───
+  // Deletes a single photo from Cloudinary and removes it from the DB.
+  // Also updates local user state to reflect removal.
+  const deletePhoto = async (photoUrl) => {
+    try {
+      const result = await userService.deletePhoto(photoUrl);
+      // Update local user state with the new photos array from server
+      const updatedPhotos = result.data.photos;
+      const updatedUser = { ...user, photos: updatedPhotos };
+      setUser(updatedUser);
+      await AsyncStorage.setItem('user', JSON.stringify(updatedUser));
+      return updatedPhotos;
+    } catch (error) {
+      console.error('Delete Photo Error:', error);
       throw error;
     }
   };

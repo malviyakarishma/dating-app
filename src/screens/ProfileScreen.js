@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Dimensions, Platform, ScrollView, Image
 } from 'react-native';
+import * as userService from '../services/userService.js';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -23,6 +24,26 @@ const menuItems = [
 export default function ProfileScreen() {
   const { user, signOut } = useAuth();
   const navigation = useNavigation();
+  const [stats, setStats] = useState({ likes: 0, matches: 0, chats: 0 });
+
+  const fetchProfileStats = async () => {
+    try {
+      const res = await userService.getProfile();
+      if (res.data && res.data.stats) {
+        setStats(res.data.stats);
+      }
+    } catch (err) {
+      console.error('Failed to load profile stats:', err);
+    }
+  };
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      fetchProfileStats();
+    });
+    fetchProfileStats();
+    return unsubscribe;
+  }, [navigation]);
 
   const calculateAge = (dobString) => {
     if (!dobString) return '';
@@ -66,9 +87,9 @@ export default function ProfileScreen() {
           {/* Stats Row */}
           <View style={styles.statsRow}>
             {[
-              { label: 'Likes', value: '24' },
-              { label: 'Matches', value: '12' },
-              { label: 'Chats', value: '8' },
+              { label: 'Likes', value: stats.likes.toString() },
+              { label: 'Matches', value: stats.matches.toString() },
+              { label: 'Chats', value: stats.chats.toString() },
             ].map((stat, i) => (
               <BlurView key={i} intensity={30} tint="dark" style={[styles.statCard, { overflow: 'hidden' }]}>
                 <Text style={styles.statValue}>{stat.value}</Text>

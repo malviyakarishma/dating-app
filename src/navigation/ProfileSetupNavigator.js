@@ -9,7 +9,7 @@ const Stack = createNativeStackNavigator();
 
 export default function ProfileSetupNavigator() {
   return (
-    <Stack.Navigator initialRouteName="ProfileSetupStep1" screenOptions={{ headerShown: false }}>
+    <Stack.Navigator initialRouteName="ProfileSetupStep1" screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#0d0507' } }}>
       <Stack.Screen name="ProfileSetupStep1" component={ProfileSetupStep1Screen} />
       <Stack.Screen name="ProfileSetupStep2" component={ProfileSetupStep2Screen} />
       <Stack.Screen name="ProfileSetupStep3" component={ProfileSetupStep3Screen} />

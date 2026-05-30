@@ -197,8 +197,19 @@ export default function DiscoverScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [matchedUser, setMatchedUser] = useState(null);
   const [isMatchModalVisible, setMatchModalVisible] = useState(false);
+  const [toastMessage, setToastMessage] = useState(null);
   
   const insets = useSafeAreaInsets();
+  const toastOpacity = useRef(new Animated.Value(0)).current;
+
+  const showToast = (message) => {
+    setToastMessage(message);
+    Animated.sequence([
+      Animated.timing(toastOpacity, { toValue: 1, duration: 350, useNativeDriver: true }),
+      Animated.delay(2200),
+      Animated.timing(toastOpacity, { toValue: 0, duration: 350, useNativeDriver: true })
+    ]).start(() => setToastMessage(null));
+  };
 
   const fetchProfiles = async () => {
     try {
@@ -226,6 +237,8 @@ export default function DiscoverScreen({ navigation }) {
         if (res.data.isMatch) {
           setMatchedUser(res.data.matchedUser);
           setMatchModalVisible(true);
+        } else if (status === 'like') {
+          showToast(`Request sent to ${swipedProfile.name || 'user'}!`);
         }
       } catch (err) {
         console.error('Swipe action failed:', err);
@@ -299,9 +312,9 @@ export default function DiscoverScreen({ navigation }) {
               <TouchableOpacity
                 onPress={() => {
                   setMatchModalVisible(false);
-                  navigation.navigate('Messages', {
-                    screen: 'ChatDM',
-                    params: { userName: matchedUser?.name, otherUserId: matchedUser?.id || matchedUser?._id },
+                  navigation.navigate('ChatDM', {
+                    userName: matchedUser?.name,
+                    otherUserId: matchedUser?.id || matchedUser?._id,
                   });
                 }}
                 activeOpacity={0.8}
@@ -324,6 +337,19 @@ export default function DiscoverScreen({ navigation }) {
           </BlurView>
         </View>
       </Modal>
+
+      {toastMessage && (
+        <Animated.View style={[styles.toastContainer, { opacity: toastOpacity, bottom: insets.bottom + 85 }]}>
+          <BlurView intensity={80} tint="dark" style={styles.toastBlur}>
+            <LinearGradient
+              colors={['rgba(255, 77, 103, 0.2)', 'rgba(194, 24, 91, 0.15)']}
+              style={StyleSheet.absoluteFillObject}
+            />
+            <Ionicons name="heart" size={18} color="#FF4D67" style={{ marginRight: 8 }} />
+            <Text style={styles.toastText}>{toastMessage}</Text>
+          </BlurView>
+        </Animated.View>
+      )}
     </View>
   );
 }
@@ -399,4 +425,31 @@ const styles = StyleSheet.create({
   matchBtnText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
   keepSwipingBtn: { paddingVertical: 12, alignItems: 'center' },
   keepSwipingText: { color: COLORS.taupe, fontSize: 14, fontWeight: '600' },
+  toastContainer: {
+    position: 'absolute',
+    left: W * 0.08,
+    right: W * 0.08,
+    alignItems: 'center',
+    zIndex: 9999,
+  },
+  toastBlur: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 77, 103, 0.35)',
+    overflow: 'hidden',
+    shadowColor: '#FF4D67',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  toastText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
 });

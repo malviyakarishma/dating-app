@@ -1,15 +1,16 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity,
-  KeyboardAvoidingView, Platform, Dimensions, FlatList, Modal, ActivityIndicator
+  KeyboardAvoidingView, Platform, Dimensions, FlatList, Modal, ActivityIndicator, Keyboard
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../theme/colors';
 import { useAuth } from '../context/AuthContext';
 import * as chatService from '../services/chatService.js';
+import * as socket from '../services/socket.js';
 
 const { width: W } = Dimensions.get('window');
 
@@ -38,86 +39,296 @@ const THEMES = {
 
 export default function ChatDMScreen({ route, navigation }) {
   const { userName = 'User', otherUserId } = route.params || {};
-  
+
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [inputText, setInputText] = useState('');
   const [currentThemeKey, setCurrentThemeKey] = useState('Default');
   const [isThemeModalVisible, setThemeModalVisible] = useState(false);
-  
+
+  // Real-time Chat States
+  const [conversationId, setConversationId] = useState(null);
+  const [isOnline, setIsOnline] = useState(false);
+  const [lastSeen, setLastSeen] = useState(null);
+  const [isTyping, setIsTyping] = useState(false);
+
   const flatListRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
   const theme = THEMES[currentThemeKey];
   const { user: currentUser } = useAuth();
+  const insets = useSafeAreaInsets();
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
 
-  const fetchMessages = async (showLoading = false) => {
+  useEffect(() => {
+    const showSubscription = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      () => {
+        setKeyboardVisible(true);
+        setTimeout(() => {
+          flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+        }, 100);
+      }
+    );
+    const hideSubscription = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => {
+        setKeyboardVisible(false);
+      }
+    );
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
+
+  // Load chat logs and initialize Socket bindings
+  const loadChatHistory = async () => {
     try {
-      if (showLoading) setLoading(true);
+      setLoading(true);
       const res = await chatService.getMessages(otherUserId);
-      setMessages(res.data.messages);
+      const convId = res.data.conversationId;
+
+      setConversationId(convId);
+      setMessages(res.data.messages || []);
+
+      // Verify user's online state from current conversation participant metadata
+      // (Optional: fetch active conversations list to grab initial status)
+      const convs = await chatService.getConversations();
+      const activeConv = convs.data.conversations?.find(c => c.conversationId === convId);
+      if (activeConv) {
+        setIsOnline(activeConv.user.isOnline);
+        setLastSeen(activeConv.user.lastSeen);
+      }
+
+      // Initialize Socket connection and join room
+      const activeSocket = await socket.initSocket();
+      if (activeSocket) {
+        activeSocket.emit('joinConversation', { conversationId: convId });
+      }
     } catch (err) {
       console.error('Failed to load chat history:', err);
     } finally {
-      if (showLoading) setLoading(false);
+      setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchMessages(true);
+    loadChatHistory();
 
-    // Poll for new messages every 4 seconds to simulate real-time chat
-    const interval = setInterval(() => {
-      fetchMessages(false);
-    }, 4000);
+    return () => {
+      if (conversationId) {
+        socket.emit('leaveConversation', { conversationId });
+      }
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+    };
+  }, [otherUserId, conversationId]);
 
-    return () => clearInterval(interval);
-  }, [otherUserId]);
+  useEffect(() => {
+    // 1) Real-time message receive
+    const handleReceiveMessage = (msg) => {
+      if (msg.conversationId === conversationId) {
+        setMessages((prev) => {
+          // Avoid duplicate local optimistic appends
+          const exists = prev.some(m => m._id === msg._id || m.id === msg._id);
+          if (exists) return prev;
+          return [...prev, msg];
+        });
+
+        // If we are viewing this screen, mark incoming message as seen instantly
+        if (msg.senderId !== currentUser._id) {
+          socket.emit('markSeen', { conversationId, senderId: otherUserId });
+        }
+
+        setTimeout(() => {
+          flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+        }, 150);
+      }
+    };
+
+    // 2) Real-time read receipt updates
+    const handleMessageDelivered = ({ messageId }) => {
+      setMessages(prev => prev.map(m =>
+        (m._id === messageId || m.id === messageId)
+          ? { ...m, status: 'delivered' }
+          : m
+      ));
+    };
+
+    const handleMessageSeen = ({ readerId }) => {
+      if (readerId === otherUserId) {
+        setMessages(prev => prev.map(m =>
+          m.senderId === currentUser._id || m.sender === 'me'
+            ? { ...m, status: 'seen' }
+            : m
+        ));
+      }
+    };
+
+    // 3) Online status listeners
+    const handleUserOnline = ({ userId, lastSeen: time }) => {
+      if (userId === otherUserId) {
+        setIsOnline(true);
+        setLastSeen(time);
+      }
+    };
+
+    const handleUserOffline = ({ userId, lastSeen: time }) => {
+      if (userId === otherUserId) {
+        setIsOnline(false);
+        setLastSeen(time);
+      }
+    };
+
+    // 4) Typing indicator listeners
+    const handleTypingStart = ({ senderId }) => {
+      if (senderId === otherUserId) {
+        setIsOnline(true); // Implicitly online if typing
+        setIsTyping(true);
+
+        // Auto stop after 3 seconds of inactivity
+        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = setTimeout(() => {
+          setIsTyping(false);
+        }, 3000);
+      }
+    };
+
+    const handleTypingStop = ({ senderId }) => {
+      if (senderId === otherUserId) {
+        setIsTyping(false);
+        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      }
+    };
+
+    socket.on('receiveMessage', handleReceiveMessage);
+    socket.on('messageDelivered', handleMessageDelivered);
+    socket.on('messageSeen', handleMessageSeen);
+    socket.on('userOnline', handleUserOnline);
+    socket.on('userOffline', handleUserOffline);
+    socket.on('typingStart', handleTypingStart);
+    socket.on('typingStop', handleTypingStop);
+
+    return () => {
+      socket.off('receiveMessage', handleReceiveMessage);
+      socket.off('messageDelivered', handleMessageDelivered);
+      socket.off('messageSeen', handleMessageSeen);
+      socket.off('userOnline', handleUserOnline);
+      socket.off('userOffline', handleUserOffline);
+      socket.off('typingStart', handleTypingStart);
+      socket.off('typingStop', handleTypingStop);
+    };
+  }, [conversationId, otherUserId]);
+
+  // Handle typing input changes and emit events
+  const handleTextChange = (text) => {
+    setInputText(text);
+
+    if (conversationId && otherUserId) {
+      if (text.length > 0) {
+        socket.emit('typingStart', { conversationId, receiverId: otherUserId });
+      } else {
+        socket.emit('typingStop', { conversationId, receiverId: otherUserId });
+      }
+    }
+  };
 
   const handleSend = async () => {
     if (inputText.trim() === '') return;
-    
+
     const textToSend = inputText.trim();
     setInputText('');
 
+    // Emit stop typing event on send
+    if (conversationId && otherUserId) {
+      socket.emit('typingStop', { conversationId, receiverId: otherUserId });
+    }
+
+    // Optimistic UI Append
+    const tempId = Date.now().toString();
+    const tempMessage = {
+      _id: tempId,
+      id: tempId,
+      text: textToSend,
+      senderId: currentUser._id,
+      sender: 'me',
+      status: 'sent',
+      createdAt: new Date().toISOString(),
+    };
+
+    setMessages(prev => [...prev, tempMessage]);
+
+    setTimeout(() => {
+      flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+    }, 100);
+
     try {
-      // Optimistically append the message to UI
-      const tempMessage = {
-        id: Date.now().toString(),
-        text: textToSend,
-        sender: currentUser._id,
-        createdAt: new Date().toISOString(),
-      };
-      setMessages(prev => [...prev, tempMessage]);
-
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 100);
-
-      // Call API
-      await chatService.sendMessage(otherUserId, textToSend);
-      
-      // Refresh messages logs
-      fetchMessages(false);
+      if (conversationId) {
+        // Emit via socket to ensure immediate delivery
+        socket.emit('sendMessage', {
+          conversationId,
+          text: textToSend,
+          receiverId: otherUserId,
+        });
+      } else {
+        // Fallback REST endpoint
+        await chatService.sendMessage(otherUserId, textToSend);
+        loadChatHistory();
+      }
     } catch (err) {
       console.error('Failed to send message:', err);
     }
   };
 
-  const formatTime = (dateStr) => {
-    if (!dateStr) return '';
-    const date = new Date(dateStr);
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  // Humanize online last seen tags
+  const getOnlineStatusText = () => {
+    if (isOnline) return 'Active now';
+    if (!lastSeen) return '';
+
+    const date = new Date(lastSeen);
+    const diffMs = Date.now() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+
+    if (diffMins < 1) return 'Active just now';
+    if (diffMins < 60) return `Active ${diffMins}m ago`;
+    if (diffHours < 24) return `Active ${diffHours}h ago`;
+
+    return `Active yesterday`;
   };
 
   const renderMessage = ({ item }) => {
-    const isMe = item.sender === currentUser._id || item.sender === 'me';
+    const currentUserId = currentUser?._id || currentUser?.id;
+    const senderIdStr = item.senderId?._id || item.senderId?.id || item.senderId;
+    const isMe = (currentUserId && senderIdStr === currentUserId) || item.sender === 'me';
+
+    // Status indicators: ✓ (sent), ✓✓ (delivered), Seen
+    let statusText = '';
+    if (isMe) {
+      if (item.status === 'seen') statusText = 'Seen';
+      else if (item.status === 'delivered') statusText = '✓ Delivered';
+      else statusText = '✓ Sent';
+    }
+
     return (
       <View style={[styles.messageRow, isMe ? styles.messageRowMe : styles.messageRowThem]}>
         <View style={[
-          styles.bubble, 
+          styles.bubble,
           isMe ? { backgroundColor: theme.bubbleColor } : styles.bubbleThem
         ]}>
           <Text style={styles.messageText}>{item.text}</Text>
-          <Text style={styles.timeText}>{formatTime(item.createdAt)}</Text>
+          <View style={styles.messageFooter}>
+            <Text style={styles.timeText}>
+              {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </Text>
+            {isMe && (
+              <Text style={[styles.statusText, item.status === 'seen' && { color: '#4CCC93' }]}>
+                {statusText}
+              </Text>
+            )}
+          </View>
         </View>
       </View>
     );
@@ -130,48 +341,86 @@ export default function ChatDMScreen({ route, navigation }) {
         locations={[0, 0.5, 1]}
         style={StyleSheet.absoluteFill}
       />
-      <SafeAreaView style={{ flex: 1, paddingTop: Platform.OS === 'android' ? 25 : 0 }} edges={['top', 'bottom']}>
+      <View style={{ flex: 1 }}>
         {/* Header */}
-        <BlurView intensity={40} tint="dark" style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerIcon}>
+        <BlurView 
+          intensity={40} 
+          tint="dark" 
+          style={[
+            styles.header, 
+            { 
+              height: 64 + insets.top, 
+              paddingTop: insets.top 
+            }
+          ]}
+        >
+          <TouchableOpacity 
+            onPress={() => {
+              Keyboard.dismiss();
+              navigation.goBack();
+            }} 
+            style={styles.headerIcon}
+          >
             <Ionicons name="chevron-back" size={W * 0.07} color="#fff" />
           </TouchableOpacity>
           <View style={styles.headerTitleWrap}>
             <Text style={styles.headerTitle}>{userName}</Text>
+            <View style={styles.statusRow}>
+              {isOnline && <View style={styles.onlineDot} />}
+              <Text style={styles.statusSub}>{getOnlineStatusText()}</Text>
+            </View>
           </View>
           <TouchableOpacity onPress={() => setThemeModalVisible(true)} style={styles.headerIcon}>
             <Ionicons name="color-palette-outline" size={W * 0.06} color="#fff" />
           </TouchableOpacity>
         </BlurView>
 
-        {/* Chat List */}
-        {loading ? (
-          <ActivityIndicator size="large" color="#FF4D67" style={{ flex: 1 }} />
-        ) : (
-          <FlatList
-            ref={flatListRef}
-            data={messages}
-            keyExtractor={(item) => item.id || item._id}
-            renderItem={renderMessage}
-            contentContainerStyle={styles.listContent}
-            showsVerticalScrollIndicator={false}
-            onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
-            onLayout={() => flatListRef.current?.scrollToEnd({ animated: false })}
-          />
-        )}
-
-        {/* Input Area */}
-        <KeyboardAvoidingView 
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
+          style={{ flex: 1 }}
+          keyboardVerticalOffset={64 + insets.top}
         >
-          <BlurView intensity={30} tint="dark" style={styles.inputContainer}>
+          {/* Chat List */}
+          {loading ? (
+            <ActivityIndicator size="large" color="#FF4D67" style={{ flex: 1 }} />
+          ) : (
+            <FlatList
+              ref={flatListRef}
+              data={[...messages].reverse()}
+              keyExtractor={(item) => item.id || item._id}
+              renderItem={renderMessage}
+              contentContainerStyle={styles.listContent}
+              showsVerticalScrollIndicator={false}
+              inverted={true}
+            />
+          )}
+
+          {/* Typing indicator bubble */}
+          {isTyping && (
+            <View style={styles.typingContainer}>
+              <BlurView intensity={30} tint="dark" style={styles.typingBlur}>
+                <Text style={styles.typingBubbleText}>{userName} is typing...</Text>
+              </BlurView>
+            </View>
+          )}
+
+          {/* Input Area */}
+          <BlurView 
+            intensity={30} 
+            tint="dark" 
+            style={[
+              styles.inputContainer,
+              {
+                paddingBottom: keyboardVisible ? W * 0.03 : Math.max(insets.bottom, W * 0.03)
+              }
+            ]}
+          >
             <TextInput
               style={styles.textInput}
               placeholder="Type a message..."
               placeholderTextColor="rgba(255,255,255,0.4)"
               value={inputText}
-              onChangeText={setInputText}
+              onChangeText={handleTextChange}
               multiline
             />
             <TouchableOpacity onPress={handleSend} style={[styles.sendBtn, { backgroundColor: theme.bubbleColor }]}>
@@ -191,10 +440,10 @@ export default function ChatDMScreen({ route, navigation }) {
             <View style={styles.modalContent}>
               <Text style={styles.modalTitle}>Choose Chat Theme</Text>
               {Object.keys(THEMES).map((key) => (
-                <TouchableOpacity 
-                  key={key} 
+                <TouchableOpacity
+                  key={key}
                   style={[
-                    styles.themeOption, 
+                    styles.themeOption,
                     currentThemeKey === key && { borderColor: THEMES[key].bubbleColor, backgroundColor: 'rgba(255,255,255,0.1)' }
                   ]}
                   onPress={() => {
@@ -214,7 +463,7 @@ export default function ChatDMScreen({ route, navigation }) {
           </View>
         </Modal>
 
-      </SafeAreaView>
+      </View>
     </View>
   );
 }
@@ -223,14 +472,17 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#0d0507' },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: W * 0.04, paddingVertical: W * 0.03,
+    paddingHorizontal: W * 0.04,
     borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)',
   },
   headerIcon: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
   headerTitleWrap: { flex: 1, alignItems: 'center' },
-  headerTitle: { fontSize: W * 0.05, fontWeight: 'bold', color: '#fff' },
-  
-  listContent: { padding: W * 0.04, paddingBottom: W * 0.08 },
+  headerTitle: { fontSize: W * 0.048, fontWeight: 'bold', color: '#fff' },
+  statusRow: { flexDirection: 'row', alignItems: 'center', marginTop: 2, gap: 5 },
+  onlineDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#4CCC93' },
+  statusSub: { fontSize: W * 0.03, color: COLORS.taupe, fontWeight: '500' },
+
+  listContent: { padding: W * 0.04, paddingTop: W * 0.08 },
   messageRow: { marginBottom: W * 0.04, flexDirection: 'row' },
   messageRowMe: { justifyContent: 'flex-end' },
   messageRowThem: { justifyContent: 'flex-start' },
@@ -242,13 +494,33 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 4,
   },
   messageText: { color: '#fff', fontSize: W * 0.04, lineHeight: 22 },
-  timeText: { color: 'rgba(255,255,255,0.5)', fontSize: 10, alignSelf: 'flex-end', marginTop: 4 },
-  
+  messageFooter: {
+    flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center',
+    gap: 8, marginTop: 4,
+  },
+  timeText: { color: 'rgba(255,255,255,0.5)', fontSize: 9 },
+  statusText: { color: 'rgba(255,255,255,0.4)', fontSize: 9, fontWeight: '600' },
+
+  typingContainer: {
+    paddingHorizontal: W * 0.06,
+    paddingVertical: W * 0.02,
+    alignSelf: 'flex-start',
+  },
+  typingBlur: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  typingBubbleText: { color: '#4CCC93', fontSize: 12, fontStyle: 'italic', fontWeight: '500' },
+
   inputContainer: {
     flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: W * 0.04, paddingVertical: W * 0.03,
+    paddingHorizontal: W * 0.04, paddingTop: W * 0.03,
     borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.05)',
-    paddingBottom: Platform.OS === 'ios' ? W * 0.06 : W * 0.03,
   },
   textInput: {
     flex: 1, backgroundColor: 'rgba(255,255,255,0.08)',

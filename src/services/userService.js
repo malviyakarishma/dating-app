@@ -13,6 +13,13 @@ export async function updateProfile(profileData, tokenOverride = null) {
   }, tokenOverride);
 }
 
+export async function deletePhoto(photoUrl, tokenOverride = null) {
+  return request('users/photo', {
+    method: 'DELETE',
+    body: JSON.stringify({ photoUrl }),
+  }, tokenOverride);
+}
+
 export async function getDiscovery(gender = null) {
   const query = gender ? `?gender=${gender}` : '';
   return request(`users/discover${query}`, {
