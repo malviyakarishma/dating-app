@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity,
-  KeyboardAvoidingView, Platform, Dimensions, FlatList, Modal, ActivityIndicator, Keyboard
+  Platform, Dimensions, FlatList, Modal, ActivityIndicator, Keyboard
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,21 +19,25 @@ const THEMES = {
   Default: {
     bgColors: ['#1a0a0e', COLORS.burgundy, '#0d0507'],
     bubbleColor: COLORS.maroon,
+    inputBg: '#180a0d',
     name: 'Default (Crimson)',
   },
   Ocean: {
     bgColors: ['#0a151a', '#0a4b59', '#051114'],
     bubbleColor: '#0a849c',
+    inputBg: '#081317',
     name: 'Ocean (Blue)',
   },
   Forest: {
     bgColors: ['#0a1a0e', '#1a5929', '#051408'],
     bubbleColor: '#2E8B57',
+    inputBg: '#08150c',
     name: 'Forest (Green)',
   },
   Midnight: {
     bgColors: ['#090a0f', '#191b33', '#040508'],
     bubbleColor: '#483D8B',
+    inputBg: '#080911',
     name: 'Midnight (Dark)',
   }
 };
@@ -57,30 +62,6 @@ export default function ChatDMScreen({ route, navigation }) {
   const theme = THEMES[currentThemeKey];
   const { user: currentUser } = useAuth();
   const insets = useSafeAreaInsets();
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
-
-  useEffect(() => {
-    const showSubscription = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
-      () => {
-        setKeyboardVisible(true);
-        setTimeout(() => {
-          flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
-        }, 100);
-      }
-    );
-    const hideSubscription = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
-      () => {
-        setKeyboardVisible(false);
-      }
-    );
-
-    return () => {
-      showSubscription.remove();
-      hideSubscription.remove();
-    };
-  }, []);
 
   // Load chat logs and initialize Socket bindings
   const loadChatHistory = async () => {
@@ -262,7 +243,7 @@ export default function ChatDMScreen({ route, navigation }) {
 
     setTimeout(() => {
       flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
-    }, 100);
+    }, 150);
 
     try {
       if (conversationId) {
@@ -343,22 +324,22 @@ export default function ChatDMScreen({ route, navigation }) {
       />
       <View style={{ flex: 1 }}>
         {/* Header */}
-        <BlurView 
-          intensity={40} 
-          tint="dark" 
+        <BlurView
+          intensity={40}
+          tint="dark"
           style={[
-            styles.header, 
-            { 
-              height: 64 + insets.top, 
-              paddingTop: insets.top 
+            styles.header,
+            {
+              height: 64 + insets.top,
+              paddingTop: insets.top
             }
           ]}
         >
-          <TouchableOpacity 
+          <TouchableOpacity
             onPress={() => {
               Keyboard.dismiss();
               navigation.goBack();
-            }} 
+            }}
             style={styles.headerIcon}
           >
             <Ionicons name="chevron-back" size={W * 0.07} color="#fff" />
@@ -376,42 +357,46 @@ export default function ChatDMScreen({ route, navigation }) {
         </BlurView>
 
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
+          behavior="padding"
           style={{ flex: 1 }}
-          keyboardVerticalOffset={64 + insets.top}
+          keyboardVerticalOffset={0}
         >
-          {/* Chat List */}
-          {loading ? (
-            <ActivityIndicator size="large" color="#FF4D67" style={{ flex: 1 }} />
-          ) : (
-            <FlatList
-              ref={flatListRef}
-              data={[...messages].reverse()}
-              keyExtractor={(item) => item.id || item._id}
-              renderItem={renderMessage}
-              contentContainerStyle={styles.listContent}
-              showsVerticalScrollIndicator={false}
-              inverted={true}
-            />
-          )}
+          {/* Chat List - takes remaining space */}
+          <View style={{ flex: 1 }}>
+            {loading ? (
+              <ActivityIndicator size="large" color="#FF4D67" style={{ flex: 1 }} />
+            ) : (
+              <FlatList
+                ref={flatListRef}
+                data={[...messages].reverse()}
+                keyExtractor={(item) => item.id || item._id}
+                renderItem={renderMessage}
+                style={{ flex: 1 }}
+                contentContainerStyle={styles.listContent}
+                showsVerticalScrollIndicator={false}
+                inverted={true}
+                keyboardDismissMode="interactive"
+                keyboardShouldPersistTaps="handled"
+              />
+            )}
 
-          {/* Typing indicator bubble */}
-          {isTyping && (
-            <View style={styles.typingContainer}>
-              <BlurView intensity={30} tint="dark" style={styles.typingBlur}>
-                <Text style={styles.typingBubbleText}>{userName} is typing...</Text>
-              </BlurView>
-            </View>
-          )}
+            {/* Typing indicator bubble */}
+            {isTyping && (
+              <View style={styles.typingContainer}>
+                <BlurView intensity={30} tint="dark" style={styles.typingBlur}>
+                  <Text style={styles.typingBubbleText}>{userName} is typing...</Text>
+                </BlurView>
+              </View>
+            )}
+          </View>
 
           {/* Input Area */}
-          <BlurView 
-            intensity={30} 
-            tint="dark" 
+          <View
             style={[
               styles.inputContainer,
               {
-                paddingBottom: keyboardVisible ? W * 0.03 : Math.max(insets.bottom, W * 0.03)
+                backgroundColor: theme.inputBg || '#180a0d',
+                paddingBottom: insets.bottom || W * 0.03
               }
             ]}
           >
@@ -426,7 +411,7 @@ export default function ChatDMScreen({ route, navigation }) {
             <TouchableOpacity onPress={handleSend} style={[styles.sendBtn, { backgroundColor: theme.bubbleColor }]}>
               <Ionicons name="send" size={W * 0.045} color="#fff" style={{ marginLeft: 3 }} />
             </TouchableOpacity>
-          </BlurView>
+          </View>
         </KeyboardAvoidingView>
 
         {/* Theme Picker Modal */}
@@ -482,7 +467,7 @@ const styles = StyleSheet.create({
   onlineDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#4CCC93' },
   statusSub: { fontSize: W * 0.03, color: COLORS.taupe, fontWeight: '500' },
 
-  listContent: { padding: W * 0.04, paddingTop: W * 0.08 },
+  listContent: { padding: W * 0.03, paddingTop: W * 0.02 },
   messageRow: { marginBottom: W * 0.04, flexDirection: 'row' },
   messageRowMe: { justifyContent: 'flex-end' },
   messageRowThem: { justifyContent: 'flex-start' },
