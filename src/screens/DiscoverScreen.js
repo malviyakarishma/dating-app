@@ -198,7 +198,7 @@ export default function DiscoverScreen({ navigation }) {
   const [matchedUser, setMatchedUser] = useState(null);
   const [isMatchModalVisible, setMatchModalVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
-  
+
   const insets = useSafeAreaInsets();
   const toastOpacity = useRef(new Animated.Value(0)).current;
 
@@ -267,7 +267,7 @@ export default function DiscoverScreen({ navigation }) {
         ) : hasProfiles ? (
           <>
             {currentIdx + 1 < profiles.length && (
-              <SwipeCard key={profiles[currentIdx + 1].id + '-b'} profile={profiles[currentIdx + 1]} isTop={false} nextProfile={true} onSwipeComplete={() => {}} />
+              <SwipeCard key={profiles[currentIdx + 1].id + '-b'} profile={profiles[currentIdx + 1]} isTop={false} nextProfile={true} onSwipeComplete={() => { }} />
             )}
             <SwipeCard key={profiles[currentIdx].id} profile={profiles[currentIdx]} isTop={true} nextProfile={false} onSwipeComplete={handleSwipe} />
           </>
@@ -357,36 +357,36 @@ export default function DiscoverScreen({ navigation }) {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#0d0507' },
   headerWrap: { paddingHorizontal: W * 0.05 },
-  headerTitle: { 
-    fontSize: W * 0.085, 
+  headerTitle: {
+    fontSize: W * 0.085,
     fontWeight: 'bold',
-    color: '#ffffff', 
+    color: '#ffffff',
   },
   filterBtn: { padding: W * 0.025, borderRadius: W * 0.03, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', backgroundColor: 'rgba(255,255,255,0.05)' },
   cardStack: { flex: 1, alignItems: 'center', justifyContent: 'flex-start', paddingHorizontal: W * 0.04, paddingTop: W * 0.03 },
-  cardWrapper: { 
-    position: 'absolute', 
-    top: W * 0.02, 
-    bottom: W * 0.02, 
-    left: W * 0.04, 
-    right: W * 0.04, 
-    borderRadius: W * 0.06, 
-    overflow: 'hidden', 
-    backgroundColor: '#1a0a0e', 
-    borderWidth: 1, 
-    borderColor: 'rgba(255,255,255,0.1)', 
-    shadowColor: '#000', 
-    shadowOffset: { width: 0, height: 8 }, 
-    shadowOpacity: 0.4, 
-    shadowRadius: 16, 
-    elevation: 10 
+  cardWrapper: {
+    position: 'absolute',
+    top: W * 0.02,
+    bottom: W * 0.02,
+    left: W * 0.04,
+    right: W * 0.04,
+    borderRadius: W * 0.06,
+    overflow: 'hidden',
+    backgroundColor: '#1a0a0e',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    elevation: 10
   },
   backCard: { zIndex: 0 },
-  
+
   coverPhotoWrap: { width: '100%', height: H * 0.76, position: 'relative' },
   cardImage: { width: '100%', height: '100%', resizeMode: 'cover' },
   cardGradient: { ...StyleSheet.absoluteFillObject },
-  
+
   cardContent: { position: 'absolute', bottom: H * 0.05, left: 0, right: 0, paddingHorizontal: W * 0.05 },
   nameRow: { flexDirection: 'row', alignItems: 'center' },
   cardName: { fontSize: W * 0.08, fontWeight: 'bold', color: '#fff' },
@@ -399,14 +399,14 @@ const styles = StyleSheet.create({
   likeStamp: { left: W * 0.05, borderColor: '#4CCC93', transform: [{ rotate: '-15deg' }] },
   nopeStamp: { right: W * 0.05, borderColor: '#FF6B6B', transform: [{ rotate: '15deg' }] },
   stampText: { fontSize: W * 0.07, fontWeight: '900', color: '#4CCC93', letterSpacing: 2 },
-  
+
   modalPills: { flexDirection: 'row', flexWrap: 'wrap', gap: W * 0.02, marginBottom: W * 0.05 },
   pill: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.1)', paddingHorizontal: W * 0.03, paddingVertical: W * 0.02, borderRadius: W * 0.025, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
   pillText: { color: '#fff', fontSize: W * 0.032, marginLeft: W * 0.015, fontWeight: '500' },
   modalPrompt: { marginBottom: W * 0.04, backgroundColor: 'rgba(255,255,255,0.06)', padding: W * 0.04, borderRadius: W * 0.035, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
   modalQ: { fontSize: W * 0.03, fontWeight: '700', color: '#FF4D67', textTransform: 'uppercase', letterSpacing: 1 },
   modalA: { fontSize: W * 0.04, color: '#fff', fontWeight: '500' },
-  
+
   emptyBlur: { borderRadius: W * 0.06, padding: W * 0.1, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', width: W - W * 0.16, marginTop: H * 0.1 },
   emptyTitle: { fontSize: W * 0.055, fontWeight: 'bold', color: '#fff', marginTop: W * 0.04 },
   emptySub: { fontSize: W * 0.035, color: COLORS.taupe, marginTop: W * 0.02, textAlign: 'center' },
