@@ -17,7 +17,7 @@ const Tab = createBottomTabNavigator();
 export default function TabNavigator() {
   return (
     <Tab.Navigator
-      sceneContainerStyle={{ backgroundColor: '#0c0a14' }}
+      sceneContainerStyle={{ backgroundColor: '#0d0507' }}
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarIcon: ({ focused, color, size }) => {
@@ -37,7 +37,7 @@ export default function TabNavigator() {
         tabBarInactiveTintColor: COLORS.taupe,
         tabBarShowLabel: false,
         tabBarStyle: {
-          backgroundColor: '#0c0a14',
+          backgroundColor: '#1a0a0e',
           borderTopWidth: 1,
           borderTopColor: 'rgba(255,255,255,0.05)',
           height: Platform.OS === 'ios' ? 85 : 65,

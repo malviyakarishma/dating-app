@@ -1,292 +1,627 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, Dimensions, Platform, TouchableOpacity, Image, ActivityIndicator, RefreshControl
+  View, Text, StyleSheet, Dimensions, Platform, TouchableOpacity, Image,
+  ActivityIndicator, Animated, ScrollView, Modal, TouchableWithoutFeedback, Easing
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { COLORS } from '../theme/colors';
 import * as swipeService from '../services/swipeService.js';
 
-const { width: W } = Dimensions.get('window');
-const CARD_W = (W - W * 0.12) / 2;
+const { width: W, height: H } = Dimensions.get('window');
+const CARD_GAP = W * 0.03;
+const SIDE_PAD = W * 0.05;
+const COLUMN_WIDTH = (W - SIDE_PAD * 2 - CARD_GAP) / 2;
+const TAB_BAR_HEIGHT = Platform.OS === 'ios' ? H * 0.1 : H * 0.08;
+const STATUS_BAR = Platform.OS === 'ios' ? H * 0.06 : H * 0.05;
 
+// --- UTILS ---
 const resolveImageSource = (photo) => {
-  if (typeof photo === 'string') {
-    return { uri: photo };
-  }
+  if (typeof photo === 'string') return { uri: photo };
   return photo;
 };
 
-export default function MatchesScreen({ navigation }) {
-  const [matches, setMatches] = useState([]);
-  const [requests, setRequests] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+// Dynamic height patterns for masonry variety (proportional to screen)
+const CARD_HEIGHTS = [
+  H * 0.28, H * 0.33, H * 0.26, H * 0.35, H * 0.30,
+  H * 0.28, H * 0.34, H * 0.27, H * 0.32, H * 0.29,
+  H * 0.36, H * 0.26,
+];
 
-  const fetchData = async (showLoading = true) => {
+// ========================================================================
+// MASONRY CARD
+// ========================================================================
+const MasonryCard = ({ item, index, cardHeight, onPress }) => {
+  const user = item.user;
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const entranceAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(entranceAnim, {
+      toValue: 1,
+      duration: 500,
+      delay: index * 80,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, []);
+
+  const translateY = entranceAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [40, 0],
+  });
+
+  const handlePressIn = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 0.96,
+      friction: 8,
+      tension: 100,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      friction: 5,
+      tension: 40,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const isMatch = item.type === 'match';
+
+  return (
+    <Animated.View style={{
+      opacity: entranceAnim,
+      transform: [{ translateY }, { scale: scaleAnim }],
+      marginBottom: CARD_GAP,
+    }}>
+      <TouchableOpacity
+        activeOpacity={0.95}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        onPress={() => onPress(item)}
+      >
+        <View style={[styles.card, { height: cardHeight }]}>
+          {/* Profile Image */}
+          {user.photos && user.photos.length > 0 ? (
+            <Image source={resolveImageSource(user.photos[0])} style={styles.cardImage} />
+          ) : (
+            <View style={[styles.cardImage, styles.placeholderImage]}>
+              <Ionicons name="person" size={50} color="rgba(255,255,255,0.08)" />
+            </View>
+          )}
+
+          {/* Bottom gradient for text */}
+          <LinearGradient
+            colors={['transparent', 'rgba(0,0,0,0.75)']}
+            style={styles.cardGradient}
+          />
+
+          {/* Name + Date overlay */}
+          <View style={styles.cardInfo}>
+            <Text style={styles.cardName} numberOfLines={2}>{user.name}</Text>
+            {user.date ? (
+              <Text style={styles.cardDate} numberOfLines={2}>{user.date}</Text>
+            ) : null}
+          </View>
+
+          {/* Inner highlight ring for depth */}
+          <View style={styles.cardInnerBorder} />
+
+          {/* Online indicator */}
+          {user.isOnline && <View style={styles.onlineDot} />}
+
+          {/* Match type badge */}
+          {isMatch && (
+            <View style={styles.matchBadge}>
+              <Ionicons name="heart" size={10} color="#fff" />
+            </View>
+          )}
+        </View>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+};
+
+// ========================================================================
+// EXPANDED PROFILE OVERLAY
+// ========================================================================
+const ExpandedProfile = ({ item, showChat, onHeart, onChat, onClose }) => {
+  const user = item?.user;
+  const scaleAnim = useRef(new Animated.Value(0.9)).current;
+  const opacityAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (item) {
+      Animated.parallel([
+        Animated.spring(scaleAnim, { toValue: 1, friction: 7, tension: 80, useNativeDriver: true }),
+        Animated.timing(opacityAnim, { toValue: 1, duration: 250, useNativeDriver: true }),
+      ]).start();
+    }
+  }, [item]);
+
+  if (!item || !user) return null;
+
+  return (
+    <Animated.View style={[styles.expandedCard, { transform: [{ scale: scaleAnim }], opacity: opacityAnim }]}>
+      {user.photos && user.photos.length > 0 ? (
+        <Image source={resolveImageSource(user.photos[0])} style={styles.expandedImage} />
+      ) : (
+        <View style={[styles.expandedImage, styles.placeholderImage]}>
+          <Ionicons name="person" size={100} color="rgba(255,255,255,0.08)" />
+        </View>
+      )}
+
+      <LinearGradient
+        colors={['transparent', 'transparent', 'rgba(0,0,0,0.85)']}
+        locations={[0, 0.35, 1]}
+        style={StyleSheet.absoluteFill}
+      />
+
+      {/* Name + Date */}
+      <View style={styles.expandedTextContainer}>
+        <Text style={styles.expandedName}>{user.name}</Text>
+        {user.date ? (
+          <Text style={styles.expandedDate}>{user.date}</Text>
+        ) : null}
+      </View>
+
+      {/* Actions */}
+      <View style={styles.expandedActions}>
+        <TouchableOpacity
+          style={[styles.actionBtn, showChat && styles.actionBtnMuted]}
+          activeOpacity={0.7}
+          onPress={onHeart}
+          disabled={showChat}
+        >
+          <Ionicons name="heart" size={26} color={showChat ? 'rgba(255,182,193,0.4)' : '#FF4D67'} />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.actionBtn, !showChat && styles.actionBtnLocked]}
+          activeOpacity={0.7}
+          onPress={onChat}
+          disabled={!showChat}
+        >
+          <Ionicons name="chatbubble-ellipses" size={26} color={showChat ? '#8B5CF6' : 'rgba(255,255,255,0.12)'} />
+        </TouchableOpacity>
+      </View>
+
+      {/* Close */}
+      <TouchableOpacity style={styles.closeBtn} onPress={onClose} activeOpacity={0.7}>
+        <BlurView intensity={50} tint="dark" style={styles.closeBtnInner}>
+          <Ionicons name="close" size={18} color="#fff" />
+        </BlurView>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+};
+
+// ========================================================================
+// MAIN SCREEN
+// ========================================================================
+export default function MatchesScreen({ navigation }) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [localAcceptedIds, setLocalAcceptedIds] = useState(new Set());
+
+  const fetchData = async () => {
     try {
-      if (showLoading) setLoading(true);
+      setLoading(true);
       const [matchesRes, requestsRes] = await Promise.all([
         swipeService.getMatches(),
         swipeService.getRequests()
       ]);
-      setMatches(matchesRes.data.matches || []);
-      setRequests(requestsRes.data.requests || []);
+      const m = matchesRes.data.matches || [];
+      const r = requestsRes.data.requests || [];
+      const combined = [
+        ...r.map(req => ({ ...req, type: 'request' })),
+        ...m.map(match => ({ user: match, type: 'match' }))
+      ];
+      setItems(combined);
     } catch (err) {
       console.error('Failed to load matches and requests:', err);
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   };
 
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    fetchData(false);
-  }, []);
+  useFocusEffect(useCallback(() => { fetchData(); }, []));
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  // --- Selected item logic ---
+  const isRequest = selectedItem?.type === 'request';
+  const isMatch = selectedItem?.type === 'match';
+  const swipeId = selectedItem?.swipeId;
+  const showChat = isMatch || (swipeId && localAcceptedIds.has(swipeId));
 
-  const handleRespond = async (swipeId, action) => {
-    try {
-      // Optimistic state update for requests
-      setRequests(prev => prev.filter(r => r.swipeId !== swipeId));
-      await swipeService.respondToRequest(swipeId, action);
-      
-      // Re-fetch all data to ensure match states and lists are fully in sync
-      fetchData(false);
-    } catch (err) {
-      console.error('Failed to respond to request:', err);
-      // Re-fetch in case of error to restore state
-      fetchData(false);
+  const handleHeartPress = async () => {
+    if (isRequest && !showChat) {
+      try {
+        await swipeService.respondToRequest(swipeId, 'accept');
+        setLocalAcceptedIds(prev => new Set(prev).add(swipeId));
+      } catch (err) {
+        console.error('Accept failed', err);
+      }
     }
   };
+
+  const handleChatPress = () => {
+    if (showChat && selectedItem?.user) {
+      setSelectedItem(null);
+      navigation.navigate('ChatDM', {
+        userName: selectedItem.user.name,
+        otherUserId: selectedItem.user.id || selectedItem.user._id
+      });
+    }
+  };
+
+  // --- Masonry columns ---
+  const { leftColumn, rightColumn } = useMemo(() => {
+    const left = [];
+    const right = [];
+    items.forEach((item, i) => {
+      if (i % 2 === 0) left.push({ item, index: i });
+      else right.push({ item, index: i });
+    });
+    return { leftColumn: left, rightColumn: right };
+  }, [items]);
 
   return (
     <View style={styles.screen}>
+      {/* Subtle animated gradient background */}
       <LinearGradient
-        colors={['#1a0a0e', COLORS.burgundy, '#0d0507']}
-        locations={[0, 0.5, 1]}
+        colors={['#0d0507', '#1a0a0e', '#12070a', '#0d0507']}
+        locations={[0, 0.3, 0.7, 1]}
         style={StyleSheet.absoluteFill}
       />
 
       {/* Header */}
-      <View style={styles.headerWrap}>
-        <BlurView intensity={40} tint="dark" style={[styles.header, { overflow: 'hidden' }]}>
-          <Text style={styles.headerText}>Matches</Text>
-          <Text style={styles.headerSub}>
-            {loading ? 'Loading...' : `${matches.length} matches • ${requests.length} requests`}
-          </Text>
-        </BlurView>
-      </View>
-
-      {loading && !refreshing ? (
-        <ActivityIndicator size="large" color="#FF4D67" style={{ marginTop: 100 }} />
-      ) : (
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#FF4D67" />
-          }
-        >
-          {/* Incoming Requests Section */}
-          {requests.length > 0 && (
-            <View style={styles.sectionWrap}>
-              <View style={styles.sectionHeader}>
-                <Ionicons name="sparkles" size={16} color="#FFD700" />
-                <Text style={styles.sectionTitle}>Like Requests ({requests.length})</Text>
-              </View>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.horizontalList}
-              >
-                {requests.map((item) => {
-                  const user = item.user || {};
-                  return (
-                    <BlurView key={item.swipeId} intensity={30} tint="dark" style={styles.requestCard}>
-                      <View style={styles.requestAvatarWrap}>
-                        {user.photos && user.photos.length > 0 ? (
-                          <Image source={resolveImageSource(user.photos[0])} style={styles.requestAvatar} />
-                        ) : (
-                          <View style={styles.placeholderAvatar}>
-                            <Ionicons name="person" size={28} color="rgba(255,255,255,0.3)" />
-                          </View>
-                        )}
-                      </View>
-                      <Text style={styles.requestName} numberOfLines={1}>
-                        {user.name || 'Someone'}, {user.age || '20'}
-                      </Text>
-                      {user.bio ? (
-                        <Text style={styles.requestBio} numberOfLines={1}>
-                          {user.bio}
-                        </Text>
-                      ) : null}
-                      <View style={styles.btnRow}>
-                        <TouchableOpacity
-                          style={[styles.actionBtn, styles.declineBtn]}
-                          onPress={() => handleRespond(item.swipeId, 'decline')}
-                          activeOpacity={0.7}
-                        >
-                          <Ionicons name="close" size={16} color="#fff" />
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          onPress={() => handleRespond(item.swipeId, 'accept')}
-                          activeOpacity={0.7}
-                        >
-                          <LinearGradient
-                            colors={['#FF4D67', '#C2185B']}
-                            style={[styles.actionBtn, styles.acceptBtn]}
-                          >
-                            <Ionicons name="checkmark" size={16} color="#fff" />
-                          </LinearGradient>
-                        </TouchableOpacity>
-                      </View>
-                    </BlurView>
-                  );
-                })}
-              </ScrollView>
+      <View style={styles.headerContainer}>
+        <View style={styles.headerRow}>
+          <View>
+            <Text style={styles.headerTitle}>Matches</Text>
+          </View>
+          {items.length > 0 && (
+            <View style={styles.countChip}>
+              <Ionicons name="heart" size={14} color="#FF4D67" />
+              <Text style={styles.countChipText}>{items.length}</Text>
             </View>
           )}
+        </View>
+      </View>
 
-          {/* Matches Grid Section */}
-          <View style={styles.sectionWrap}>
-            <View style={styles.sectionHeader}>
-              <Ionicons name="heart" size={16} color="#FF4D67" />
-              <Text style={styles.sectionTitle}>Your Matches</Text>
+      {loading ? (
+        <ActivityIndicator size="large" color="#FF4D67" style={{ flex: 1 }} />
+      ) : items.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <View style={styles.emptyIconWrap}>
+            <Ionicons name="heart-outline" size={48} color="rgba(255,77,103,0.3)" />
+          </View>
+          <Text style={styles.emptyText}>No matches yet</Text>
+          <Text style={styles.emptySub}>
+            Keep discovering new people.{'\n'}Your matches will appear here.
+          </Text>
+        </View>
+      ) : (
+        <ScrollView
+          contentContainerStyle={styles.gridContainer}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Two-column masonry */}
+          <View style={styles.masonryRow}>
+            {/* Left Column */}
+            <View style={styles.masonryColumn}>
+              {leftColumn.map(({ item, index }) => (
+                <MasonryCard
+                  key={item.user?.id || item.user?._id || `l${index}`}
+                  item={item}
+                  index={index}
+                  cardHeight={CARD_HEIGHTS[index % CARD_HEIGHTS.length]}
+                  onPress={setSelectedItem}
+                />
+              ))}
             </View>
 
-            {matches.length === 0 ? (
-              <View style={styles.emptyContainer}>
-                <Ionicons name="heart-dislike-outline" size={50} color={COLORS.taupe} style={{ marginBottom: 12 }} />
-                <Text style={styles.emptyText}>No matches yet</Text>
-                <Text style={styles.emptySub}>Keep swiping in discover to find your match!</Text>
-              </View>
-            ) : (
-              <View style={styles.gridContainer}>
-                {matches.map((item) => (
-                  <TouchableOpacity 
-                    key={item.id || item._id}
-                    activeOpacity={0.8} 
-                    style={styles.cardWrap}
-                    onPress={() => navigation.navigate('ChatDM', {
-                      userName: item.name,
-                      otherUserId: item.id || item._id
-                    })}
-                  >
-                    <View style={styles.card}>
-                      {item.photos && item.photos.length > 0 ? (
-                        <Image source={resolveImageSource(item.photos[0])} style={styles.cardImage} />
-                      ) : (
-                        <View style={[styles.cardImage, { backgroundColor: COLORS.maroon, justifyContent: 'center', alignItems: 'center' }]}>
-                          <Ionicons name="person" size={50} color="rgba(255,255,255,0.3)" />
-                        </View>
-                      )}
-                      <LinearGradient
-                        colors={['transparent', 'rgba(0,0,0,0.8)']}
-                        style={styles.cardGradient}
-                      />
-                      
-                      <BlurView intensity={50} tint="dark" style={[styles.cardInfo, { overflow: 'hidden' }]}>
-                        <Text style={styles.matchName} numberOfLines={1}>{item.name}, {item.age || '20'}</Text>
-                        <Ionicons name="chatbubbles-outline" size={W * 0.04} color="#FF4D67" />
-                      </BlurView>
-                    </View>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
+            {/* Right Column (offset for stagger) */}
+            <View style={[styles.masonryColumn, { marginTop: 24 }]}>
+              {rightColumn.map(({ item, index }) => (
+                <MasonryCard
+                  key={item.user?.id || item.user?._id || `r${index}`}
+                  item={item}
+                  index={index}
+                  cardHeight={CARD_HEIGHTS[index % CARD_HEIGHTS.length]}
+                  onPress={setSelectedItem}
+                />
+              ))}
+            </View>
           </View>
         </ScrollView>
       )}
+
+      {/* Expanded Profile Modal */}
+      <Modal visible={!!selectedItem} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <BlurView intensity={80} tint="dark" style={StyleSheet.absoluteFill} />
+          <TouchableWithoutFeedback onPress={() => setSelectedItem(null)}>
+            <View style={StyleSheet.absoluteFill} />
+          </TouchableWithoutFeedback>
+          <ExpandedProfile
+            item={selectedItem}
+            showChat={showChat}
+            onHeart={handleHeartPress}
+            onChat={handleChatPress}
+            onClose={() => setSelectedItem(null)}
+          />
+        </View>
+      </Modal>
     </View>
   );
 }
 
+// ========================================================================
+// STYLES
+// ========================================================================
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#0d0507' },
-  headerWrap: { paddingTop: Platform.OS === 'ios' ? 54 : 40, paddingHorizontal: W * 0.04 },
-  header: {
-    borderRadius: W * 0.04, padding: W * 0.04,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
+
+  // Header
+  headerContainer: {
+    paddingTop: STATUS_BAR,
+    paddingHorizontal: SIDE_PAD,
+    paddingBottom: H * 0.015,
   },
-  headerText: { fontSize: W * 0.065, fontWeight: 'bold', color: '#fff' },
-  headerSub: { fontSize: W * 0.032, color: COLORS.taupe, marginTop: 2 },
-  scrollContent: { paddingVertical: W * 0.04, flexGrow: 1 },
-  sectionWrap: { marginBottom: W * 0.06 },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: W * 0.04, marginBottom: W * 0.03, gap: 6 },
-  sectionTitle: { fontSize: W * 0.04, fontWeight: '700', color: COLORS.cream, letterSpacing: 0.5 },
-  
-  // Requests Carousel
-  horizontalList: { paddingHorizontal: W * 0.04, gap: W * 0.03, paddingBottom: 4 },
-  requestCard: {
-    width: W * 0.4,
-    borderRadius: W * 0.04,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    padding: W * 0.03,
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    overflow: 'hidden',
   },
-  requestAvatarWrap: {
-    width: W * 0.16,
-    height: W * 0.16,
-    borderRadius: W * 0.08,
-    borderWidth: 2,
-    borderColor: '#FF4D67',
-    overflow: 'hidden',
-    marginBottom: W * 0.02,
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#fff',
+    letterSpacing: -0.5,
   },
-  requestAvatar: { width: '100%', height: '100%', resizeMode: 'cover' },
-  placeholderAvatar: { width: '100%', height: '100%', backgroundColor: COLORS.maroon, justifyContent: 'center', alignItems: 'center' },
-  requestName: { fontSize: W * 0.035, fontWeight: '700', color: '#fff', textAlign: 'center', marginBottom: 2 },
-  requestBio: { fontSize: W * 0.028, color: COLORS.taupe, textAlign: 'center', marginBottom: W * 0.025, paddingHorizontal: 4 },
-  btnRow: { flexDirection: 'row', gap: W * 0.03, justifyContent: 'center', alignItems: 'center' },
-  actionBtn: {
-    width: W * 0.09,
-    height: W * 0.09,
-    borderRadius: W * 0.045,
+  headerSub: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.4)',
+    marginTop: 2,
+    fontWeight: '500',
+  },
+  countChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(255,77,103,0.12)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,77,103,0.2)',
+  },
+  countChipText: {
+    color: '#FF4D67',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+
+  // Grid
+  gridContainer: {
+    paddingHorizontal: SIDE_PAD,
+    paddingBottom: TAB_BAR_HEIGHT,
+  },
+  masonryRow: {
+    flexDirection: 'row',
+    gap: CARD_GAP,
+  },
+  masonryColumn: {
+    flex: 1,
+  },
+
+  // Card
+  card: {
+    borderRadius: 20,
+    overflow: 'hidden',
+    backgroundColor: '#1a1a1a',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.07)',
+    // Warm rose glow
+    shadowColor: '#FF4D67',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 20,
+    elevation: 12,
+  },
+  cardImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  placeholderImage: {
+    backgroundColor: '#1a1018',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  declineBtn: {
-    backgroundColor: 'rgba(255,255,255,0.12)',
+  cardGradient: {
+    position: 'absolute',
+    bottom: 0, left: 0, right: 0,
+    height: '55%',
+  },
+  cardInfo: {
+    position: 'absolute',
+    bottom: 14,
+    left: 14,
+    right: 14,
+  },
+  cardName: {
+    color: '#e0d38bff',
+    fontSize: 18,
+    fontWeight: '700',
+    letterSpacing: -0.3,
+    lineHeight: 22,
+    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
+  cardDate: {
+    color: 'rgba(255,255,255,0.55)',
+    fontSize: 11,
+    fontWeight: '500',
+    marginTop: 4,
+    lineHeight: 15,
+    textShadowColor: 'rgba(0,0,0,0.4)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  cardInnerBorder: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 19,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+  },
+  onlineDot: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#4CCC93',
+    borderWidth: 2,
+    borderColor: '#0d0507',
+  },
+  matchBadge: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: 'rgba(255,77,103,0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  // Modal
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  expandedCard: {
+    width: W * 0.88,
+    height: H * 0.6,
+    borderRadius: 28,
+    overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
   },
-  acceptBtn: {
-    shadowColor: '#FF4D67',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.3,
-    shadowRadius: 5,
-    elevation: 3,
+  expandedImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  expandedTextContainer: {
+    position: 'absolute',
+    bottom: 95,
+    left: 24,
+    right: 24,
+  },
+  expandedDate: {
+    color: 'rgba(255,255,255,0.55)',
+    fontSize: 13,
+    fontWeight: '500',
+    lineHeight: 18,
+    marginTop: 4,
+    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
+  expandedName: {
+    color: '#e0d38bff',
+    fontSize: 32,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+    textShadowColor: 'rgba(0,0,0,0.6)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 8,
+  },
+  expandedActions: {
+    position: 'absolute',
+    bottom: 28,
+    left: 0, right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 18,
+  },
+  actionBtn: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+  },
+  actionBtnMuted: {
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderColor: 'rgba(255,255,255,0.06)',
+  },
+  actionBtnLocked: {
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderColor: 'rgba(255,255,255,0.05)',
+  },
+  closeBtn: {
+    position: 'absolute',
+    top: 14,
+    right: 14,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    overflow: 'hidden',
+  },
+  closeBtnInner: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
   },
 
-  // Grid Section
-  gridContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    paddingHorizontal: W * 0.04,
-    gap: W * 0.03,
+  // Empty State
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
   },
-  cardWrap: { width: CARD_W, marginBottom: W * 0.01 },
-  card: {
-    borderRadius: W * 0.045, overflow: 'hidden', aspectRatio: 0.7,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
+  emptyIconWrap: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(255,77,103,0.06)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,77,103,0.1)',
   },
-  cardImage: { width: '100%', height: '100%', resizeMode: 'cover' },
-  cardGradient: { ...StyleSheet.absoluteFillObject },
-  cardInfo: {
-    position: 'absolute', bottom: 0, left: 0, right: 0,
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    padding: W * 0.03, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.08)',
+  emptyText: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 8,
   },
-  matchName: { fontSize: W * 0.035, fontWeight: '700', color: '#fff', flex: 1, marginRight: 4 },
-  emptyContainer: { alignItems: 'center', marginTop: 60, paddingHorizontal: 40, width: '100%' },
-  emptyText: { color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 6 },
-  emptySub: { color: COLORS.taupe, fontSize: 13, textAlign: 'center', lineHeight: 18 },
+  emptySub: {
+    color: 'rgba(255,255,255,0.35)',
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
 });
