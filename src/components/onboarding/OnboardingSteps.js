@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { 
+import {
   View, Text, StyleSheet, TouchableOpacity, TextInput, Image, Dimensions, Platform, ScrollView
 } from 'react-native';
 import { BlurView } from 'expo-blur';
@@ -64,7 +64,7 @@ export const GenderStep = ({ formData, updateForm }) => (
 
 export const DobStep = ({ formData, updateForm }) => {
   const [showPicker, setShowPicker] = useState(false);
-  
+
   const maxDate = new Date();
   maxDate.setFullYear(maxDate.getFullYear() - 18);
 
@@ -81,7 +81,7 @@ export const DobStep = ({ formData, updateForm }) => {
         <Text style={styles.dateLabel}>Date of Birth</Text>
         <Text style={styles.dateValue}>{formData.dob ? formData.dob.toLocaleDateString() : 'Tap to select'}</Text>
       </TouchableOpacity>
-      
+
       {showPicker && (
         <View style={styles.pickerContainer}>
           <DateTimePicker value={formData.dob || maxDate} mode="date" display="spinner" maximumDate={maxDate} onChange={onChange} textColor="#fff" />
@@ -179,7 +179,7 @@ export const DateFoodStep = ({ formData, updateForm }) => (
   <ScrollView showsVerticalScrollIndicator={false}>
     <Text style={styles.inputLabel}>Describe your ideal date</Text>
     <GlassInput icon="heart-outline" placeholder="e.g. Coffee and a long walk" value={formData.date} onChangeText={v => updateForm('date', v)} maxLength={200} multiline />
-    
+
     <View style={{ height: 24 }} />
     <Text style={styles.inputLabel}>Go-to food or place</Text>
     <GlassInput icon="restaurant-outline" placeholder="e.g. Late night pizza" value={formData.food} onChangeText={v => updateForm('food', v)} maxLength={200} multiline />

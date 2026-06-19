@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import {
   View, Text, StyleSheet, Image, TouchableOpacity,
   Dimensions, Modal, StatusBar, Platform, Animated, PanResponder, ActivityIndicator,
@@ -328,11 +328,10 @@ const SwipeCard = ({
   profile,
   isTop,
   onSwipeComplete,
-  nextProfile,
 }) => {
   const pan = useRef(new Animated.ValueXY()).current;
-  const cardScale = useRef(new Animated.Value(isTop ? 1 : 0.94)).current;
-  const cardOpacity = useRef(new Animated.Value(isTop ? 1 : 0.6)).current;
+  const cardScale = useRef(new Animated.Value(isTop ? 1 : 0.92)).current;
+  const cardOpacity = useRef(new Animated.Value(isTop ? 1 : 0)).current;
   const [activePhotoIdx, setActivePhotoIdx] = useState(0);
   const [viewedTags, setViewedTags] = useState([]);
 
@@ -379,12 +378,12 @@ const SwipeCard = ({
     if (isTop) {
       Animated.parallel([
         Animated.spring(cardScale, { toValue: 1, friction: 6, useNativeDriver: true }),
-        Animated.timing(cardOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
+        Animated.timing(cardOpacity, { toValue: 1, duration: 250, useNativeDriver: true }),
       ]).start();
     } else {
       Animated.parallel([
-        Animated.timing(cardScale, { toValue: 0.94, duration: 200, useNativeDriver: true }),
-        Animated.timing(cardOpacity, { toValue: 0.6, duration: 200, useNativeDriver: true }),
+        Animated.timing(cardScale, { toValue: 0.92, duration: 200, useNativeDriver: true }),
+        Animated.timing(cardOpacity, { toValue: 0, duration: 200, useNativeDriver: true }),
       ]).start();
     }
   }, [isTop]);
@@ -444,7 +443,7 @@ const SwipeCard = ({
     extrapolate: 'clamp',
   });
 
-  if (!isTop && !nextProfile) return null;
+
 
   const photoCount = profile.photos ? profile.photos.length : 0;
   const currentPhoto =
@@ -618,6 +617,8 @@ export default function DiscoverScreen({ navigation }) {
   const LOOP_MULTIPLIER = 100;
   const [profiles, setProfiles] = useState([]);
   const [globalIdx, setGlobalIdx] = useState(0);
+  const [renderIndex, setRenderIndex] = useState(0);
+  const [swipedIds, setSwipedIds] = useState(new Set());
   const [loading, setLoading] = useState(true);
   const [matchedUser, setMatchedUser] = useState(null);
   const [isMatchModalVisible, setMatchModalVisible] = useState(false);
@@ -637,6 +638,19 @@ export default function DiscoverScreen({ navigation }) {
     ]).start(() => setToastMessage(null));
   };
 
+  const lastScrollIdx = useRef(renderIndex);
+
+  useEffect(() => {
+    const id = scrollX.addListener(({ value }) => {
+      const idx = Math.round(value / ITEM_WIDTH);
+      if (idx >= 0 && idx !== lastScrollIdx.current) {
+        lastScrollIdx.current = idx;
+        setRenderIndex(idx);
+      }
+    });
+    return () => scrollX.removeListener(id);
+  }, [scrollX]);
+
   const fetchProfiles = async () => {
     try {
       setLoading(true);
@@ -646,6 +660,7 @@ export default function DiscoverScreen({ navigation }) {
       if (loadedProfiles.length > 0) {
         const start = Math.floor(LOOP_MULTIPLIER / 2) * loadedProfiles.length;
         setGlobalIdx(start);
+        setRenderIndex(start);
         scrollX.setValue(start * ITEM_WIDTH);
       }
     } catch (err) {
@@ -659,15 +674,27 @@ export default function DiscoverScreen({ navigation }) {
     fetchProfiles();
   }, []);
 
-  const currentIdx = profiles.length > 0 ? globalIdx % profiles.length : 0;
-  const nextIdx = profiles.length > 0 ? (globalIdx + 1) % profiles.length : 0;
-  const hasProfiles = profiles.length > 0;
-  const loopedProfiles = profiles.length > 0 ? Array(LOOP_MULTIPLIER).fill(profiles).flat() : [];
-  const initialOffset = profiles.length > 0 ? Math.floor(LOOP_MULTIPLIER / 2) * profiles.length * ITEM_WIDTH : 0;
+  const activeProfiles = useMemo(() => {
+    return profiles.filter(p => !swipedIds.has(p.id || p._id));
+  }, [profiles, swipedIds]);
+
+  const hasProfiles = activeProfiles.length > 0;
+  const loopedProfiles = useMemo(() => {
+    return activeProfiles.length > 0 ? Array(LOOP_MULTIPLIER).fill(activeProfiles).flat() : [];
+  }, [activeProfiles]);
+
+  const renderAvatarItem = useCallback(({ item: p, index: idx }) => (
+    <BottomArcAvatar
+      profile={p}
+      index={idx}
+      scrollX={scrollX}
+      onPress={() => handleArcProfileTap(p, idx)}
+    />
+  ), [scrollX, handleArcProfileTap]);
 
   const handleSwipe = useCallback(
-    async (dir) => {
-      const swipedProfile = profiles[currentIdx];
+    async (dir, swipedIdx) => {
+      const swipedProfile = loopedProfiles[swipedIdx];
       if (swipedProfile) {
         const status = dir === 'right' ? 'like' : 'dislike';
         try {
@@ -684,34 +711,32 @@ export default function DiscoverScreen({ navigation }) {
         } catch (err) {
           console.error('Swipe action failed:', err);
         }
+
+        // Add to swiped set — this triggers activeProfiles/loopedProfiles to recompute
+        setSwipedIds(prev => {
+          const next = new Set(prev);
+          next.add(swipedProfile.id || swipedProfile._id);
+          return next;
+        });
       }
 
-      setProfiles((prevProfiles) => {
-        if (prevProfiles.length <= 1) return [];
-        const nextProfiles = prevProfiles.filter((_, i) => i !== currentIdx);
-        const oldLength = prevProfiles.length;
-        const newLength = nextProfiles.length;
-
-        const loopIteration = Math.floor(globalIdx / oldLength);
-        const newGlobalIdx = loopIteration * newLength + currentIdx;
-
-        setGlobalIdx(newGlobalIdx);
-
-        setTimeout(() => {
-          scrollViewRef.current?.scrollTo({ x: newGlobalIdx * ITEM_WIDTH, animated: false });
-        }, 0);
-
-        return nextProfiles;
-      });
+      // After recompute, the same index now points to the next profile
+      // Scroll to where we are (FlatList data shrinks, so same offset = next profile)
+      const startIdx = Math.floor(LOOP_MULTIPLIER / 2) * (activeProfiles.length - 1);
+      setRenderIndex(startIdx);
+      lastScrollIdx.current = startIdx;
+      setTimeout(() => {
+        scrollViewRef.current?.scrollToOffset({ offset: startIdx * ITEM_WIDTH, animated: false });
+      }, 50);
     },
-    [profiles, currentIdx, globalIdx]
+    [loopedProfiles, activeProfiles]
   );
 
   // When user taps on a bottom arc avatar, jump to that profile
   const handleArcProfileTap = useCallback(
     (tappedProfile, idx) => {
       setGlobalIdx(idx);
-      scrollViewRef.current?.scrollTo({ x: idx * ITEM_WIDTH, animated: true });
+      scrollViewRef.current?.scrollToOffset({ offset: idx * ITEM_WIDTH, animated: true });
     },
     []
   );
@@ -729,26 +754,29 @@ export default function DiscoverScreen({ navigation }) {
             style={{ marginTop: H * 0.4 }}
           />
         ) : hasProfiles ? (
-          <>
-            {profiles.length > 1 && (
-              <SwipeCard
-                key={`${profiles[nextIdx].id}-${globalIdx + 1}`}
-                profile={profiles[nextIdx]}
-                isTop={false}
-                nextProfile={true}
-                onSwipeComplete={() => { }}
-              />
-            )}
-            {profiles.length > 0 && (
-              <SwipeCard
-                key={`${profiles[currentIdx].id}-${globalIdx}`}
-                profile={profiles[currentIdx]}
-                isTop={true}
-                nextProfile={false}
-                onSwipeComplete={handleSwipe}
-              />
-            )}
-          </>
+          (() => {
+            const currentProfile = loopedProfiles[renderIndex];
+            const nextProfile = loopedProfiles[renderIndex + 1];
+            if (!currentProfile) return null;
+            return (
+              <>
+                {nextProfile && (
+                  <SwipeCard
+                    key={`back-${nextProfile.id || nextProfile._id}-${renderIndex + 1}`}
+                    profile={nextProfile}
+                    isTop={false}
+                    onSwipeComplete={() => {}}
+                  />
+                )}
+                <SwipeCard
+                  key={`top-${currentProfile.id || currentProfile._id}-${renderIndex}`}
+                  profile={currentProfile}
+                  isTop={true}
+                  onSwipeComplete={(dir) => handleSwipe(dir, renderIndex)}
+                />
+              </>
+            );
+          })()
         ) : (
           <BlurView
             intensity={50}
@@ -776,23 +804,23 @@ export default function DiscoverScreen({ navigation }) {
 
       {/* Bottom arc of real user avatars — overlapping the card */}
       {!loading && hasProfiles && loopedProfiles.length > 0 && (
-        <Animated.ScrollView
+        <Animated.FlatList
           ref={scrollViewRef}
           horizontal
+          data={loopedProfiles}
+          keyExtractor={(p, idx) => `${p.id || p._id}-${idx}`}
           showsHorizontalScrollIndicator={false}
           scrollEventThrottle={16}
-          contentOffset={{ x: initialOffset, y: 0 }}
+          initialScrollIndex={Math.floor(LOOP_MULTIPLIER / 2) * activeProfiles.length}
+          getItemLayout={(data, index) => ({
+            length: ITEM_WIDTH,
+            offset: ITEM_WIDTH * index,
+            index,
+          })}
           onScroll={Animated.event(
             [{ nativeEvent: { contentOffset: { x: scrollX } } }],
             { useNativeDriver: true }
           )}
-          onMomentumScrollEnd={(e) => {
-            const offsetX = e.nativeEvent.contentOffset.x;
-            const index = Math.round(offsetX / ITEM_WIDTH);
-            if (index !== globalIdx) {
-              setGlobalIdx(index);
-            }
-          }}
           style={[
             s.arcScrollView,
             { bottom: insets.bottom + 2 },
@@ -803,17 +831,11 @@ export default function DiscoverScreen({ navigation }) {
           }}
           snapToInterval={ITEM_WIDTH}
           decelerationRate="fast"
-        >
-          {loopedProfiles.map((p, idx) => (
-            <BottomArcAvatar
-              key={`${p.id || p._id}-${idx}`}
-              profile={p}
-              index={idx}
-              scrollX={scrollX}
-              onPress={() => handleArcProfileTap(p, idx)}
-            />
-          ))}
-        </Animated.ScrollView>
+          initialNumToRender={5}
+          maxToRenderPerBatch={5}
+          windowSize={5}
+          renderItem={renderAvatarItem}
+        />
       )}
 
       {/* ─── Match Overlay Modal ─── */}

@@ -1,13 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { 
-  View, Text, StyleSheet, Dimensions, TouchableOpacity, 
-  FlatList, KeyboardAvoidingView, Platform, Keyboard 
+import {
+  View, Text, StyleSheet, Dimensions, TouchableOpacity,
+  FlatList, KeyboardAvoidingView, Platform, Keyboard
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import Animated, { 
-  useAnimatedStyle, 
-  withSpring, 
+import Animated, {
+  useAnimatedStyle,
+  withSpring,
   useSharedValue,
   withTiming
 } from 'react-native-reanimated';
@@ -40,7 +40,7 @@ const STEPS = [
 
 export default function ProfileSetupScreen({ navigation }) {
   const { user, updateProfileStep, uploadPhotos } = useAuth();
-  
+
   // -- Form State --
   const [formData, setFormData] = useState({
     gender: user?.gender || 'Female',
@@ -72,7 +72,7 @@ export default function ProfileSetupScreen({ navigation }) {
   const [error, setError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadStatus, setUploadStatus] = useState('');
-  
+
   const flatListRef = useRef(null);
   const progressWidth = useSharedValue(0);
 
@@ -89,7 +89,7 @@ export default function ProfileSetupScreen({ navigation }) {
   const validateCurrentStep = () => {
     setError(null);
     const step = STEPS[currentIndex];
-    switch(step.id) {
+    switch (step.id) {
       case 'dob':
         if (!formData.dob) return "Date of Birth is required.";
         break;
@@ -151,10 +151,10 @@ export default function ProfileSetupScreen({ navigation }) {
     try {
       setIsSubmitting(true);
       setError(null);
-      
+
       const localPhotos = formData.photos.filter(p => !p.startsWith('http'));
       const alreadyUploaded = formData.photos.filter(p => p.startsWith('http'));
-      
+
       let uploadedUrls = [...alreadyUploaded];
       if (localPhotos.length > 0) {
         setUploadStatus('Uploading photos (this may take a moment)...');
@@ -186,7 +186,7 @@ export default function ProfileSetupScreen({ navigation }) {
           <Text style={styles.title}>{item.title}</Text>
           <Text style={styles.subtitle}>{item.subtitle}</Text>
         </View>
-        
+
         <View style={styles.cardContainer}>
           {item.id === 'gender' && <GenderStep formData={formData} updateForm={updateForm} />}
           {item.id === 'dob' && <DobStep formData={formData} updateForm={updateForm} />}
@@ -208,17 +208,17 @@ export default function ProfileSetupScreen({ navigation }) {
     <OnboardingBackground>
       <SafeAreaView style={styles.safeArea}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-          
+
           {/* Header & Progress Bar */}
           <View style={styles.header}>
-            <TouchableOpacity 
-              style={[styles.backBtn, currentIndex === 0 && { opacity: 0 }]} 
-              onPress={handleBack} 
+            <TouchableOpacity
+              style={[styles.backBtn, currentIndex === 0 && { opacity: 0 }]}
+              onPress={handleBack}
               disabled={currentIndex === 0 || isSubmitting}
             >
               <Ionicons name="arrow-back" size={24} color="#fff" />
             </TouchableOpacity>
-            
+
             <View style={styles.progressTrack}>
               <Animated.View style={[styles.progressFill, progressStyle]} />
             </View>
@@ -244,15 +244,15 @@ export default function ProfileSetupScreen({ navigation }) {
           {/* Bottom Action Area */}
           <View style={styles.bottomArea}>
             {uploadStatus ? <Text style={styles.uploadStatusText}>{uploadStatus}</Text> : null}
-            <TouchableOpacity 
-              onPress={handleNext} 
-              activeOpacity={0.8} 
+            <TouchableOpacity
+              onPress={handleNext}
+              activeOpacity={0.8}
               disabled={isSubmitting}
               style={{ width: '100%' }}
             >
-              <LinearGradient 
-                colors={isSubmitting ? ['rgba(255,255,255,0.1)', 'rgba(255,255,255,0.15)'] : [COLORS.maroon, COLORS.burgundy]} 
-                start={{x: 0, y: 0}} end={{x: 1, y: 0}} 
+              <LinearGradient
+                colors={isSubmitting ? ['rgba(255,255,255,0.1)', 'rgba(255,255,255,0.15)'] : [COLORS.maroon, COLORS.burgundy]}
+                start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
                 style={styles.nextBtn}
               >
                 <Text style={styles.nextBtnText}>

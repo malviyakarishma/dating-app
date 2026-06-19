@@ -106,7 +106,6 @@ export function AuthProvider({ children }) {
       initSocket();
       return { success: true };
     } catch (error) {
-      console.error('Sign Up Error:', error);
       throw error;
     }
   };

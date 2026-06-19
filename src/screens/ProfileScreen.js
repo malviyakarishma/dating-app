@@ -20,17 +20,7 @@ const PREMIUM_ACTIONS = [
     items: [
       { icon: 'create-outline', label: 'Edit Profile', route: 'EditProfile' },
       { icon: 'checkmark-circle-outline', label: 'Verification', route: null },
-      { icon: 'star-outline', label: 'Premium Membership', route: null, highlight: true },
-    ]
-  },
-  {
-    title: 'Preferences',
-    items: [
-      { icon: 'options-outline', label: 'Dating Preferences', route: null },
-      { icon: 'location-outline', label: 'Distance', route: null },
-      { icon: 'calendar-outline', label: 'Age Range', route: null },
-      { icon: 'heart-outline', label: 'Interests', route: null },
-    ]
+      { icon: 'star-outline', label: 'Premium Membership', route: null, highlight: true },]
   },
   {
     title: 'Privacy & Safety',
