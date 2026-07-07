@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Local Wi-Fi network IP of the host computer, permitting physical devices running Expo Go to connect to the backend server.
-export const API_URL = 'http://192.168.29.154:5000/api';
+export const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.29.154:5000/api';
 
 let isRefreshing = false;
 let failedQueue = [];
