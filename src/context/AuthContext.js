@@ -34,18 +34,41 @@ export function AuthProvider({ children }) {
         const storedUser = await AsyncStorage.getItem('user');
 
         if (storedToken) {
+          const parsedUser = storedUser ? JSON.parse(storedUser) : null;
+          if (parsedUser && !parsedUser.isProfileComplete) {
+            // User closed the app before completing profile, force them to login again
+            await AsyncStorage.removeItem('userToken');
+            await AsyncStorage.removeItem('refreshToken');
+            await AsyncStorage.removeItem('user');
+            setIsLoading(false);
+            return;
+          }
+
           // Temporarily set them so the app doesn't wait to render
           setUserToken(storedToken);
           if (storedRefresh) setRefreshToken(storedRefresh);
-          if (storedUser) setUser(JSON.parse(storedUser));
+          if (parsedUser) setUser(parsedUser);
 
           // Verify token and sync user state with backend
           try {
             initSocket();
             const result = await userService.getProfile(storedToken);
             if (result.data && result.data.user) {
-              setUser(result.data.user);
-              await AsyncStorage.setItem('user', JSON.stringify(result.data.user));
+              const fetchedUser = result.data.user;
+              if (!fetchedUser.isProfileComplete) {
+                // If backend says profile is incomplete, log them out
+                console.log('Profile incomplete on backend, clearing local storage...');
+                disconnectSocket();
+                await AsyncStorage.removeItem('userToken');
+                await AsyncStorage.removeItem('refreshToken');
+                await AsyncStorage.removeItem('user');
+                setUserToken(null);
+                setRefreshToken(null);
+                setUser(null);
+              } else {
+                setUser(fetchedUser);
+                await AsyncStorage.setItem('user', JSON.stringify(fetchedUser));
+              }
             }
           } catch (err) {
             console.log('Token invalid or user deleted, clearing local storage...');
@@ -89,11 +112,21 @@ export function AuthProvider({ children }) {
   };
 
   // ─── Sign Up (new user – only name/email/password) ────────
-  // Creates the user entry in the database. After this,
-  // RootNavigator shows ProfileSetup screens because isProfileComplete is false.
+  // Creates the user entry in the database. Returns success so frontend can navigate to Verify OTP.
   const signUp = async (name, email, password) => {
     try {
-      const result = await authService.register(name, email, password);
+      await authService.register(name, email, password);
+      // Do not log in or save tokens yet. Wait for OTP verification.
+      return { success: true, email };
+    } catch (error) {
+      throw error;
+    }
+  };
+
+  // ─── Verify Registration OTP ─────────────────────────────
+  const verifyRegistration = async (email, otp) => {
+    try {
+      const result = await authService.verifyRegistration(email, otp);
       const { user: newUser, tokens } = result.data;
 
       await AsyncStorage.setItem('userToken', tokens.access.token);
@@ -104,6 +137,16 @@ export function AuthProvider({ children }) {
       setRefreshToken(tokens.refresh.token);
       setUser(newUser);
       initSocket();
+      return { success: true };
+    } catch (error) {
+      throw error;
+    }
+  };
+
+  // ─── Resend Registration OTP ─────────────────────────────
+  const resendRegistrationOtp = async (email) => {
+    try {
+      await authService.resendRegistrationOtp(email);
       return { success: true };
     } catch (error) {
       throw error;
@@ -196,6 +239,8 @@ export function AuthProvider({ children }) {
     isLoading,
     signIn,
     signUp,
+    verifyRegistration,
+    resendRegistrationOtp,
     signOut,
     updateProfileStep,
     uploadPhotos,

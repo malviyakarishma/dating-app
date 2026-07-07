@@ -92,7 +92,7 @@ export const DobStep = ({ formData, updateForm }) => {
 };
 
 export const ZodiacStep = ({ formData, updateForm }) => (
-  <ScrollView contentContainerStyle={styles.chipContainer} showsVerticalScrollIndicator={false}>
+  <ScrollView contentContainerStyle={styles.chipContainer} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" nestedScrollEnabled={true}>
     {zodiacSigns.map(sign => (
       <Chip key={sign} label={sign} active={formData.zodiac === sign} onPress={() => updateForm('zodiac', sign)} />
     ))}
@@ -157,7 +157,7 @@ export const HeightWeightStep = ({ formData, updateForm }) => (
 );
 
 export const MusicMoviesStep = ({ formData, updateForm }) => (
-  <ScrollView showsVerticalScrollIndicator={false}>
+  <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" nestedScrollEnabled={true}>
     <Text style={styles.inputLabel}>Favorite Music Genre</Text>
     <View style={styles.chipContainer}>
       {musicGenres.map(m => (
@@ -176,7 +176,7 @@ export const MusicMoviesStep = ({ formData, updateForm }) => (
 );
 
 export const DateFoodStep = ({ formData, updateForm }) => (
-  <ScrollView showsVerticalScrollIndicator={false}>
+  <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" nestedScrollEnabled={true}>
     <Text style={styles.inputLabel}>Describe your ideal date</Text>
     <GlassInput icon="heart-outline" placeholder="e.g. Coffee and a long walk" value={formData.date} onChangeText={v => updateForm('date', v)} maxLength={200} multiline />
 
@@ -222,7 +222,7 @@ export const PhotosBioStep = ({ formData, updateForm, error, setError }) => {
   };
 
   return (
-    <ScrollView showsVerticalScrollIndicator={false}>
+    <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" nestedScrollEnabled={true}>
       <Text style={styles.inputLabel}>Upload 3 to 6 photos</Text>
       <View style={styles.photoGrid}>
         {[0, 1, 2, 3, 4, 5].map((index) => {

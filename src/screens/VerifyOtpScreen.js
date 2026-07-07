@@ -10,13 +10,13 @@ import PremiumButton from '../components/auth/PremiumButton';
 const { width: W } = Dimensions.get('window');
 
 export default function VerifyOtpScreen({ route, navigation }) {
-  const { email } = route.params || {};
+  const { email, isRegistration } = route.params || {};
   const [otp, setOtp] = useState('');
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isResending, setIsResending] = useState(false);
-  const { verifyOtp, forgotPassword } = useAuth();
+  const { verifyOtp, forgotPassword, verifyRegistration, resendRegistrationOtp } = useAuth();
 
   const handleVerify = async () => {
     if (otp.length !== 6) {
@@ -28,8 +28,16 @@ export default function VerifyOtpScreen({ route, navigation }) {
       setIsSubmitting(true);
       setError(null);
       setSuccessMessage(null);
-      await verifyOtp(email, otp);
-      navigation.navigate('ResetPassword', { email });
+      
+      if (isRegistration) {
+        await verifyRegistration(email, otp);
+        // After verifyRegistration, AuthContext will update userToken and user state.
+        // This causes RootNavigator to automatically unmount the Auth stack and navigate to ProfileSetup.
+        // No manual navigation is needed here.
+      } else {
+        await verifyOtp(email, otp);
+        navigation.navigate('ResetPassword', { email });
+      }
     } catch (err) {
       setError(err.message || 'OTP verification failed. Please check the code.');
     } finally {
@@ -42,7 +50,13 @@ export default function VerifyOtpScreen({ route, navigation }) {
       setIsResending(true);
       setError(null);
       setSuccessMessage(null);
-      await forgotPassword(email);
+      
+      if (isRegistration) {
+        await resendRegistrationOtp(email);
+      } else {
+        await forgotPassword(email);
+      }
+      
       setSuccessMessage('OTP code has been resent to your email!');
     } catch (err) {
       setError(err.message || 'Resend failed. Please try again later.');

@@ -67,14 +67,33 @@ export default function ProfileSetupScreen({ navigation }) {
     setFormData(prev => ({ ...prev, [key]: value }));
   };
 
+  // -- Helper: Find Initial Step --
+  const getInitialStepIndex = (u) => {
+    if (!u) return 0;
+    if (!u.gender) return 0;
+    if (!u.dob) return 1;
+    if (!u.zodiac) return 2;
+    if (!u.occupation) return 3;
+    if (!u.isStudent) return 4;
+    if (!u.location) return 5;
+    if (!u.height || !u.weight) return 6;
+    if (!u.music || !u.movies) return 7;
+    if (!u.date || !u.food) return 8;
+    if (!u.relationshipType) return 9;
+    if (!u.photos || u.photos.length < 3) return 10;
+    return 0;
+  };
+
+  const initialIndex = getInitialStepIndex(user);
+
   // -- UI State --
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [error, setError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadStatus, setUploadStatus] = useState('');
 
   const flatListRef = useRef(null);
-  const progressWidth = useSharedValue(0);
+  const progressWidth = useSharedValue(initialIndex / STEPS.length);
 
   useEffect(() => {
     progressWidth.value = withTiming((currentIndex + 1) / STEPS.length, { duration: 400 });
@@ -128,8 +147,19 @@ export default function ProfileSetupScreen({ navigation }) {
     }
 
     if (currentIndex < STEPS.length - 1) {
-      flatListRef.current.scrollToIndex({ index: currentIndex + 1, animated: true });
-      setCurrentIndex(currentIndex + 1);
+      try {
+        setIsSubmitting(true);
+        // We will not save partial progress to avoid backend validation errors
+        // since the backend requires all fields to be non-empty strings.
+        // We will just move to the next step and save everything at the end.
+
+        flatListRef.current.scrollToIndex({ index: currentIndex + 1, animated: true });
+        setCurrentIndex(currentIndex + 1);
+      } catch (err) {
+        setError(err.message || "Failed to save progress.");
+      } finally {
+        setIsSubmitting(false);
+      }
     } else {
       await submitProfile();
     }
@@ -239,6 +269,10 @@ export default function ProfileSetupScreen({ navigation }) {
             scrollEnabled={false}
             showsHorizontalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
+            initialScrollIndex={initialIndex}
+            getItemLayout={(data, index) => (
+              { length: W, offset: W * index, index }
+            )}
           />
 
           {/* Bottom Action Area */}

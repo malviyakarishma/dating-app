@@ -42,6 +42,20 @@ export async function resetPassword(email, password) {
   });
 }
 
+export async function verifyRegistration(email, otp) {
+  return request('auth/verify-registration', {
+    method: 'POST',
+    body: JSON.stringify({ email, otp }),
+  });
+}
+
+export async function resendRegistrationOtp(email) {
+  return request('auth/resend-registration-otp', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+}
+
 export async function refresh(refreshToken) {
   return request('auth/refresh', {
     method: 'POST',

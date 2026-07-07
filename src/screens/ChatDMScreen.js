@@ -1,16 +1,18 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity,
-  Platform, Dimensions, FlatList, Modal, ActivityIndicator, Keyboard
+  Platform, Dimensions, FlatList, Modal, ActivityIndicator, Keyboard, Animated
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
+import * as WebBrowser from 'expo-web-browser';
 import { COLORS } from '../theme/colors';
 import { useAuth } from '../context/AuthContext';
 import * as chatService from '../services/chatService.js';
+import * as paymentService from '../services/paymentService.js';
 import * as socket from '../services/socket.js';
 
 const { width: W } = Dimensions.get('window');
@@ -42,6 +44,88 @@ const THEMES = {
   }
 };
 
+/**
+ * Format remaining time for display.
+ */
+const formatCountdown = (ms) => {
+  if (!ms || ms <= 0) return 'Expired';
+  const hours = Math.floor(ms / (1000 * 60 * 60));
+  const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+};
+
+// ========================================================================
+// ACCESS EXPIRED OVERLAY
+// ========================================================================
+const AccessExpiredOverlay = ({ userName, onRenew, loading }) => {
+  const scaleAnim = useRef(new Animated.Value(0.95)).current;
+  const opacityAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.spring(scaleAnim, { toValue: 1, friction: 8, tension: 80, useNativeDriver: true }),
+      Animated.timing(opacityAnim, { toValue: 1, duration: 300, useNativeDriver: true }),
+    ]).start();
+  }, []);
+
+  return (
+    <Animated.View style={[expiredStyles.container, {
+      transform: [{ scale: scaleAnim }],
+      opacity: opacityAnim,
+    }]}>
+      <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} />
+
+      <View style={expiredStyles.content}>
+        <View style={expiredStyles.lockCircle}>
+          <LinearGradient
+            colors={['#8B5CF6', '#FF4D67']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={expiredStyles.lockGradient}
+          >
+            <Ionicons name="lock-closed" size={32} color="#fff" />
+          </LinearGradient>
+        </View>
+
+        <Text style={expiredStyles.title}>Chat Access Expired</Text>
+        <Text style={expiredStyles.subtitle}>
+          Renew access to continue chatting with {userName}
+        </Text>
+
+        <TouchableOpacity
+          style={expiredStyles.renewBtn}
+          onPress={() => onRenew('ONE_TIME')}
+          disabled={loading}
+          activeOpacity={0.8}
+        >
+          {loading ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
+            <>
+              <Ionicons name="flash" size={18} color="#fff" />
+              <Text style={expiredStyles.renewBtnText}>Renew · ₹20 for 24 hours</Text>
+            </>
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={expiredStyles.subBtn}
+          onPress={() => onRenew('SUBSCRIPTION')}
+          disabled={loading}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="repeat" size={16} color="#FF4D67" />
+          <Text style={expiredStyles.subBtnText}>Auto-Renew · ₹20/day</Text>
+        </TouchableOpacity>
+      </View>
+    </Animated.View>
+  );
+};
+
+// ========================================================================
+// MAIN SCREEN
+// ========================================================================
 export default function ChatDMScreen({ route, navigation }) {
   const { userName = 'User', otherUserId } = route.params || {};
 
@@ -57,13 +141,82 @@ export default function ChatDMScreen({ route, navigation }) {
   const [lastSeen, setLastSeen] = useState(null);
   const [isTyping, setIsTyping] = useState(false);
 
+  // Chat Access States
+  const [hasAccess, setHasAccess] = useState(null); // null = loading, true/false = resolved
+  const [accessInfo, setAccessInfo] = useState(null);
+  const [remainingTime, setRemainingTime] = useState(null);
+  const [renewLoading, setRenewLoading] = useState(false);
+
   const flatListRef = useRef(null);
   const typingTimeoutRef = useRef(null);
+  const countdownIntervalRef = useRef(null);
   const theme = THEMES[currentThemeKey];
   const { user: currentUser } = useAuth();
   const insets = useSafeAreaInsets();
 
-  // Load chat logs and initialize Socket bindings
+  // ─── Chat Access Verification ──────────────────────────────────────────
+  const checkAccess = async () => {
+    try {
+      const res = await paymentService.getChatAccess(otherUserId);
+      const data = res.data;
+      setAccessInfo(data);
+      setHasAccess(data?.hasAccess || false);
+      setRemainingTime(data?.remainingTime || null);
+      return data?.hasAccess || false;
+    } catch (err) {
+      console.error('Access check failed:', err);
+      setHasAccess(false);
+      return false;
+    }
+  };
+
+  // Countdown timer for remaining access
+  useEffect(() => {
+    if (hasAccess && remainingTime && remainingTime > 0) {
+      countdownIntervalRef.current = setInterval(() => {
+        setRemainingTime(prev => {
+          if (prev <= 60000) {
+            // Less than 1 minute — re-check access
+            clearInterval(countdownIntervalRef.current);
+            checkAccess();
+            return 0;
+          }
+          return prev - 60000; // Decrement by 1 minute
+        });
+      }, 60000);
+
+      return () => {
+        if (countdownIntervalRef.current) {
+          clearInterval(countdownIntervalRef.current);
+        }
+      };
+    }
+  }, [hasAccess, remainingTime]);
+
+  // ─── Handle Renewal ────────────────────────────────────────────────────
+  const handleRenew = async (paymentType) => {
+    try {
+      setRenewLoading(true);
+      const res = await paymentService.unlockChat(otherUserId, paymentType);
+      const url = res.data?.checkoutUrl;
+      if (url) {
+        await WebBrowser.openBrowserAsync(url);
+        // Wait for webhook
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Re-check access
+        const granted = await checkAccess();
+        if (granted) {
+          loadChatHistory();
+        }
+      }
+    } catch (err) {
+      console.error('Renewal failed:', err.message);
+    } finally {
+      setRenewLoading(false);
+    }
+  };
+
+  // ─── Load Chat History ─────────────────────────────────────────────────
   const loadChatHistory = async () => {
     try {
       setLoading(true);
@@ -74,7 +227,6 @@ export default function ChatDMScreen({ route, navigation }) {
       setMessages(res.data.messages || []);
 
       // Verify user's online state from current conversation participant metadata
-      // (Optional: fetch active conversations list to grab initial status)
       const convs = await chatService.getConversations();
       const activeConv = convs.data.conversations?.find(c => c.conversationId === convId);
       if (activeConv) {
@@ -95,7 +247,16 @@ export default function ChatDMScreen({ route, navigation }) {
   };
 
   useEffect(() => {
-    loadChatHistory();
+    // First check access, then load chat if access is granted
+    const init = async () => {
+      const granted = await checkAccess();
+      if (granted) {
+        await loadChatHistory();
+      } else {
+        setLoading(false);
+      }
+    };
+    init();
 
     return () => {
       if (conversationId) {
@@ -104,8 +265,11 @@ export default function ChatDMScreen({ route, navigation }) {
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
       }
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+      }
     };
-  }, [otherUserId, conversationId]);
+  }, [otherUserId]);
 
   useEffect(() => {
     // 1) Real-time message receive
@@ -184,6 +348,13 @@ export default function ChatDMScreen({ route, navigation }) {
       }
     };
 
+    // 5) Chat access expired socket error
+    const handleError = (err) => {
+      if (err?.code === 'CHAT_ACCESS_EXPIRED') {
+        checkAccess(); // Re-verify and show overlay
+      }
+    };
+
     socket.on('receiveMessage', handleReceiveMessage);
     socket.on('messageDelivered', handleMessageDelivered);
     socket.on('messageSeen', handleMessageSeen);
@@ -191,6 +362,7 @@ export default function ChatDMScreen({ route, navigation }) {
     socket.on('userOffline', handleUserOffline);
     socket.on('typingStart', handleTypingStart);
     socket.on('typingStop', handleTypingStop);
+    socket.on('error', handleError);
 
     return () => {
       socket.off('receiveMessage', handleReceiveMessage);
@@ -200,6 +372,7 @@ export default function ChatDMScreen({ route, navigation }) {
       socket.off('userOffline', handleUserOffline);
       socket.off('typingStart', handleTypingStart);
       socket.off('typingStop', handleTypingStop);
+      socket.off('error', handleError);
     };
   }, [conversationId, otherUserId]);
 
@@ -217,7 +390,7 @@ export default function ChatDMScreen({ route, navigation }) {
   };
 
   const handleSend = async () => {
-    if (inputText.trim() === '') return;
+    if (inputText.trim() === '' || !hasAccess) return;
 
     const textToSend = inputText.trim();
     setInputText('');
@@ -294,18 +467,18 @@ export default function ChatDMScreen({ route, navigation }) {
     }
 
     return (
-      <View style={[styles.messageRow, isMe ? styles.messageRowMe : styles.messageRowThem]}>
+      <View style={[dmStyles.messageRow, isMe ? dmStyles.messageRowMe : dmStyles.messageRowThem]}>
         <View style={[
-          styles.bubble,
-          isMe ? { backgroundColor: theme.bubbleColor } : styles.bubbleThem
+          dmStyles.bubble,
+          isMe ? { backgroundColor: theme.bubbleColor } : dmStyles.bubbleThem
         ]}>
-          <Text style={styles.messageText}>{item.text}</Text>
-          <View style={styles.messageFooter}>
-            <Text style={styles.timeText}>
+          <Text style={dmStyles.messageText}>{item.text}</Text>
+          <View style={dmStyles.messageFooter}>
+            <Text style={dmStyles.timeText}>
               {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </Text>
             {isMe && (
-              <Text style={[styles.statusText, item.status === 'seen' && { color: '#4CCC93' }]}>
+              <Text style={[dmStyles.statusText, item.status === 'seen' && { color: '#4CCC93' }]}>
                 {statusText}
               </Text>
             )}
@@ -316,7 +489,7 @@ export default function ChatDMScreen({ route, navigation }) {
   };
 
   return (
-    <View style={styles.screen}>
+    <View style={dmStyles.screen}>
       <LinearGradient
         colors={theme.bgColors}
         locations={[0, 0.5, 1]}
@@ -328,7 +501,7 @@ export default function ChatDMScreen({ route, navigation }) {
           intensity={40}
           tint="dark"
           style={[
-            styles.header,
+            dmStyles.header,
             {
               height: 64 + insets.top,
               paddingTop: insets.top
@@ -340,79 +513,123 @@ export default function ChatDMScreen({ route, navigation }) {
               Keyboard.dismiss();
               navigation.goBack();
             }}
-            style={styles.headerIcon}
+            style={dmStyles.headerIcon}
           >
             <Ionicons name="chevron-back" size={W * 0.07} color="#fff" />
           </TouchableOpacity>
-          <View style={styles.headerTitleWrap}>
-            <Text style={styles.headerTitle}>{userName}</Text>
-            <View style={styles.statusRow}>
-              {isOnline && <View style={styles.onlineDot} />}
-              <Text style={styles.statusSub}>{getOnlineStatusText()}</Text>
+          <View style={dmStyles.headerTitleWrap}>
+            <Text style={dmStyles.headerTitle}>{userName}</Text>
+            <View style={dmStyles.statusRow}>
+              {isOnline && <View style={dmStyles.onlineDot} />}
+              <Text style={dmStyles.statusSub}>{getOnlineStatusText()}</Text>
+              {/* Remaining time badge */}
+              {hasAccess && remainingTime && remainingTime > 0 && (
+                <View style={dmStyles.timeBadge}>
+                  <Ionicons name="time-outline" size={10} color="#8B5CF6" />
+                  <Text style={dmStyles.timeBadgeText}>{formatCountdown(remainingTime)}</Text>
+                </View>
+              )}
             </View>
           </View>
-          <TouchableOpacity onPress={() => setThemeModalVisible(true)} style={styles.headerIcon}>
+          <TouchableOpacity onPress={() => setThemeModalVisible(true)} style={dmStyles.headerIcon}>
             <Ionicons name="color-palette-outline" size={W * 0.06} color="#fff" />
           </TouchableOpacity>
         </BlurView>
 
-        <KeyboardAvoidingView
-          behavior="padding"
-          style={{ flex: 1 }}
-          keyboardVerticalOffset={0}
-        >
-          {/* Chat List - takes remaining space */}
-          <View style={{ flex: 1 }}>
-            {loading ? (
-              <ActivityIndicator size="large" color="#FF4D67" style={{ flex: 1 }} />
-            ) : (
-              <FlatList
-                ref={flatListRef}
-                data={[...messages].reverse()}
-                keyExtractor={(item) => item.id || item._id}
-                renderItem={renderMessage}
-                style={{ flex: 1 }}
-                contentContainerStyle={styles.listContent}
-                showsVerticalScrollIndicator={false}
-                inverted={true}
-                keyboardDismissMode="interactive"
-                keyboardShouldPersistTaps="handled"
-              />
-            )}
-
-            {/* Typing indicator bubble */}
-            {isTyping && (
-              <View style={styles.typingContainer}>
-                <BlurView intensity={30} tint="dark" style={styles.typingBlur}>
-                  <Text style={styles.typingBubbleText}>{userName} is typing...</Text>
-                </BlurView>
-              </View>
-            )}
+        {/* Access check loading state */}
+        {hasAccess === null ? (
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+            <ActivityIndicator size="large" color="#8B5CF6" />
+            <Text style={{ color: 'rgba(255,255,255,0.4)', marginTop: 12, fontSize: 14 }}>
+              Verifying chat access...
+            </Text>
           </View>
-
-          {/* Input Area */}
-          <View
-            style={[
-              styles.inputContainer,
-              {
-                backgroundColor: theme.inputBg || '#180a0d',
-                paddingBottom: insets.bottom || W * 0.03
-              }
-            ]}
+        ) : hasAccess === false ? (
+          // Access expired overlay
+          <AccessExpiredOverlay
+            userName={userName}
+            onRenew={handleRenew}
+            loading={renewLoading}
+          />
+        ) : (
+          // Full chat interface
+          <KeyboardAvoidingView
+            behavior="padding"
+            style={{ flex: 1 }}
+            keyboardVerticalOffset={0}
           >
-            <TextInput
-              style={styles.textInput}
-              placeholder="Type a message..."
-              placeholderTextColor="rgba(255,255,255,0.4)"
-              value={inputText}
-              onChangeText={handleTextChange}
-              multiline
-            />
-            <TouchableOpacity onPress={handleSend} style={[styles.sendBtn, { backgroundColor: theme.bubbleColor }]}>
-              <Ionicons name="send" size={W * 0.045} color="#fff" style={{ marginLeft: 3 }} />
-            </TouchableOpacity>
-          </View>
-        </KeyboardAvoidingView>
+            {/* Chat List - takes remaining space */}
+            <View style={{ flex: 1 }}>
+              {loading ? (
+                <ActivityIndicator size="large" color="#FF4D67" style={{ flex: 1 }} />
+              ) : (
+                <FlatList
+                  ref={flatListRef}
+                  data={[...messages].reverse()}
+                  keyExtractor={(item) => item.id || item._id}
+                  renderItem={renderMessage}
+                  style={{ flex: 1 }}
+                  contentContainerStyle={dmStyles.listContent}
+                  showsVerticalScrollIndicator={false}
+                  inverted={true}
+                  keyboardDismissMode="interactive"
+                  keyboardShouldPersistTaps="handled"
+                />
+              )}
+
+              {/* Typing indicator bubble */}
+              {isTyping && (
+                <View style={dmStyles.typingContainer}>
+                  <BlurView intensity={30} tint="dark" style={dmStyles.typingBlur}>
+                    <Text style={dmStyles.typingBubbleText}>{userName} is typing...</Text>
+                  </BlurView>
+                </View>
+              )}
+            </View>
+
+            {/* Input Area */}
+            <View
+              style={[
+                dmStyles.inputContainer,
+                {
+                  backgroundColor: theme.inputBg || '#180a0d',
+                  paddingBottom: insets.bottom || W * 0.03
+                }
+              ]}
+            >
+              {accessInfo?.canSend ? (
+                <>
+                  <TextInput
+                    style={dmStyles.textInput}
+                    placeholder="Type a message..."
+                    placeholderTextColor="rgba(255,255,255,0.4)"
+                    value={inputText}
+                    onChangeText={handleTextChange}
+                    multiline
+                  />
+                  <TouchableOpacity onPress={handleSend} style={[dmStyles.sendBtn, { backgroundColor: theme.bubbleColor }]}>
+                    <Ionicons name="send" size={W * 0.045} color="#fff" style={{ marginLeft: 3 }} />
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <TouchableOpacity 
+                  onPress={() => handleRenew('ONE_TIME')} 
+                  style={{ backgroundColor: '#8B5CF6', flex: 1, paddingVertical: 14, borderRadius: 14, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginBottom: 8 }}
+                  disabled={renewLoading}
+                >
+                  {renewLoading ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <>
+                      <Ionicons name="lock-closed" size={16} color="#fff" style={{ marginRight: 8 }} />
+                      <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 16 }}>Unlock to Reply (₹50)</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
+            </View>
+          </KeyboardAvoidingView>
+        )}
 
         {/* Theme Picker Modal */}
         <Modal
@@ -421,14 +638,14 @@ export default function ChatDMScreen({ route, navigation }) {
           animationType="fade"
           onRequestClose={() => setThemeModalVisible(false)}
         >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>Choose Chat Theme</Text>
+          <View style={dmStyles.modalOverlay}>
+            <View style={dmStyles.modalContent}>
+              <Text style={dmStyles.modalTitle}>Choose Chat Theme</Text>
               {Object.keys(THEMES).map((key) => (
                 <TouchableOpacity
                   key={key}
                   style={[
-                    styles.themeOption,
+                    dmStyles.themeOption,
                     currentThemeKey === key && { borderColor: THEMES[key].bubbleColor, backgroundColor: 'rgba(255,255,255,0.1)' }
                   ]}
                   onPress={() => {
@@ -436,13 +653,13 @@ export default function ChatDMScreen({ route, navigation }) {
                     setThemeModalVisible(false);
                   }}
                 >
-                  <View style={[styles.themeColorDot, { backgroundColor: THEMES[key].bubbleColor }]} />
-                  <Text style={styles.themeOptionText}>{THEMES[key].name}</Text>
+                  <View style={[dmStyles.themeColorDot, { backgroundColor: THEMES[key].bubbleColor }]} />
+                  <Text style={dmStyles.themeOptionText}>{THEMES[key].name}</Text>
                   {currentThemeKey === key && <Ionicons name="checkmark" size={20} color={THEMES[key].bubbleColor} />}
                 </TouchableOpacity>
               ))}
-              <TouchableOpacity onPress={() => setThemeModalVisible(false)} style={styles.closeModalBtn}>
-                <Text style={styles.closeModalText}>Cancel</Text>
+              <TouchableOpacity onPress={() => setThemeModalVisible(false)} style={dmStyles.closeModalBtn}>
+                <Text style={dmStyles.closeModalText}>Cancel</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -453,7 +670,84 @@ export default function ChatDMScreen({ route, navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+// ========================================================================
+// ACCESS EXPIRED OVERLAY STYLES
+// ========================================================================
+const expiredStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  content: {
+    alignItems: 'center',
+    paddingHorizontal: 40,
+  },
+  lockCircle: {
+    marginBottom: 24,
+  },
+  lockGradient: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#fff',
+    textAlign: 'center',
+    letterSpacing: -0.5,
+    marginBottom: 8,
+  },
+  subtitle: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.45)',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 32,
+  },
+  renewBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    width: '100%',
+    paddingVertical: 16,
+    borderRadius: 16,
+    backgroundColor: '#8B5CF6',
+    marginBottom: 12,
+  },
+  renewBtnText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  subBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    width: '100%',
+    paddingVertical: 14,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,77,103,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,77,103,0.2)',
+  },
+  subBtnText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#FF4D67',
+  },
+});
+
+// ========================================================================
+// CHAT DM STYLES
+// ========================================================================
+const dmStyles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#0d0507' },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -466,6 +760,21 @@ const styles = StyleSheet.create({
   statusRow: { flexDirection: 'row', alignItems: 'center', marginTop: 2, gap: 5 },
   onlineDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#4CCC93' },
   statusSub: { fontSize: W * 0.03, color: COLORS.taupe, fontWeight: '500' },
+  timeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: 'rgba(139,92,246,0.15)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    marginLeft: 4,
+  },
+  timeBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#8B5CF6',
+  },
 
   listContent: { padding: W * 0.03, paddingTop: W * 0.02 },
   messageRow: { marginBottom: W * 0.04, flexDirection: 'row' },

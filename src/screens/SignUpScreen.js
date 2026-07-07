@@ -36,6 +36,8 @@ export default function SignUpScreen({ navigation }) {
       try {
         setIsSubmitting(true);
         await signUp(name.trim(), email.trim(), password);
+        // Navigate to Verify OTP screen
+        navigation.navigate('VerifyOtp', { email: email.trim(), isRegistration: true });
       } catch (err) {
         setErrors({ ...newErrors, api: err.message || 'Registration failed. Please try again.' });
       } finally {

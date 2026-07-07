@@ -1,13 +1,17 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, Dimensions, Platform, TouchableOpacity,
-  ActivityIndicator, Image, TextInput, ScrollView, TouchableHighlight
+  ActivityIndicator, Image, TextInput, ScrollView, TouchableHighlight,
+  Modal, TouchableWithoutFeedback, Animated
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
+import * as WebBrowser from 'expo-web-browser';
 import { COLORS } from '../theme/colors';
 import * as chatService from '../services/chatService.js';
 import * as swipeService from '../services/swipeService.js';
+import * as paymentService from '../services/paymentService.js';
 import * as socket from '../services/socket.js';
 import { useFocusEffect } from '@react-navigation/native';
 
@@ -15,6 +19,98 @@ const { width: W, height: H } = Dimensions.get('window');
 const AVATAR_SIZE = W * 0.16; // Slightly larger for emphasis
 const STORY_SIZE = W * 0.18;
 const STATUS_BAR = Platform.OS === 'ios' ? H * 0.06 : H * 0.05;
+
+// ========================================================================
+// QUICK UNLOCK MODAL (for chat screen new match bubbles)
+// ========================================================================
+const QuickUnlockModal = ({ visible, user, onClose, onUnlockComplete }) => {
+  const [loading, setLoading] = useState(false);
+  const scaleAnim = React.useRef(new Animated.Value(0.9)).current;
+
+  React.useEffect(() => {
+    if (visible) {
+      Animated.spring(scaleAnim, { toValue: 1, friction: 7, tension: 80, useNativeDriver: true }).start();
+    } else {
+      scaleAnim.setValue(0.9);
+    }
+  }, [visible]);
+
+  const handlePay = async (type) => {
+    if (!user) return;
+    try {
+      setLoading(true);
+      const res = await paymentService.unlockChat(user._id, type);
+      const url = res.data?.checkoutUrl;
+      if (url) {
+        await WebBrowser.openBrowserAsync(url);
+        // Wait for webhook processing
+        await new Promise(r => setTimeout(r, 2000));
+        const accessRes = await paymentService.getChatAccess(user._id);
+        if (accessRes.data?.hasAccess) {
+          onUnlockComplete(user);
+        }
+      }
+    } catch (err) {
+      console.error('Payment error:', err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!visible || !user) return null;
+
+  return (
+    <Modal visible={visible} transparent animationType="fade">
+      <View style={qStyles.overlay}>
+        <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} />
+        <TouchableWithoutFeedback onPress={onClose}>
+          <View style={StyleSheet.absoluteFill} />
+        </TouchableWithoutFeedback>
+        <Animated.View style={[qStyles.card, { transform: [{ scale: scaleAnim }] }]}>
+          <LinearGradient
+            colors={['rgba(139,92,246,0.2)', 'transparent']}
+            style={qStyles.topGlow}
+          />
+          <View style={qStyles.lockIcon}>
+            <Ionicons name="lock-closed" size={24} color="#8B5CF6" />
+          </View>
+          <Text style={qStyles.title}>Unlock chat with {user.name?.split(' ')[0]}</Text>
+          <Text style={qStyles.sub}>Pay ₹20 to start messaging</Text>
+
+          <TouchableOpacity
+            style={qStyles.btn}
+            onPress={() => handlePay('ONE_TIME')}
+            disabled={loading}
+            activeOpacity={0.8}
+          >
+            {loading ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <>
+                <Ionicons name="flash" size={18} color="#fff" />
+                <Text style={qStyles.btnText}>One-Time · ₹20 / 24hrs</Text>
+              </>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[qStyles.btn, qStyles.btnSub]}
+            onPress={() => handlePay('SUBSCRIPTION')}
+            disabled={loading}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="repeat" size={18} color="#FF4D67" />
+            <Text style={[qStyles.btnText, { color: '#FF4D67' }]}>Auto-Renew · ₹20/day</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity onPress={onClose} style={qStyles.cancelBtn}>
+            <Text style={qStyles.cancelText}>Cancel</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      </View>
+    </Modal>
+  );
+};
 
 // ========================================================================
 // CONVERSATION ROW
@@ -90,6 +186,7 @@ export default function ChatScreen({ navigation }) {
   const [newMatches, setNewMatches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [typingUsers, setTypingUsers] = useState({});
+  const [unlockUser, setUnlockUser] = useState(null);
 
   const fetchData = async (showLoading = true) => {
     try {
@@ -167,6 +264,29 @@ export default function ChatScreen({ navigation }) {
     }, [])
   );
 
+  /**
+   * When a new match bubble is tapped, check chat access first.
+   * If access exists, navigate to ChatDM; if not, show unlock modal.
+   */
+  const handleNewMatchPress = async (match) => {
+    try {
+      const res = await paymentService.getChatAccess(match._id);
+      if (res.data?.hasAccess) {
+        navigation.navigate('ChatDM', { userName: match.name, otherUserId: match._id });
+      } else {
+        setUnlockUser(match);
+      }
+    } catch (err) {
+      // If access check fails, show unlock modal as fallback
+      setUnlockUser(match);
+    }
+  };
+
+  const handleUnlockComplete = (user) => {
+    setUnlockUser(null);
+    navigation.navigate('ChatDM', { userName: user.name, otherUserId: user._id });
+  };
+
   return (
     <View style={styles.screen}>
       <LinearGradient
@@ -204,10 +324,16 @@ export default function ChatScreen({ navigation }) {
                     key={match._id} 
                     style={styles.storyItem}
                     activeOpacity={0.8}
-                    onPress={() => navigation.navigate('ChatDM', { userName: match.name, otherUserId: match._id })}
+                    onPress={() => handleNewMatchPress(match)}
                   >
                     <View style={styles.storyAvatarWrap}>
                       <Image source={{ uri: match.photos?.[0] }} style={styles.storyAvatar} />
+                      {/* Lock overlay for matches without chat access */}
+                      <View style={styles.storyLockOverlay}>
+                        <View style={styles.storyLockBadge}>
+                          <Ionicons name="lock-closed" size={10} color="#FFD700" />
+                        </View>
+                      </View>
                       {match.isOnline && <View style={styles.storyOnlineDot} />}
                     </View>
                     <Text style={styles.storyName} numberOfLines={1}>{match.name.split(' ')[0]}</Text>
@@ -240,9 +366,97 @@ export default function ChatScreen({ navigation }) {
 
         </ScrollView>
       )}
+
+      {/* Quick Unlock Modal */}
+      <QuickUnlockModal
+        visible={!!unlockUser}
+        user={unlockUser}
+        onClose={() => setUnlockUser(null)}
+        onUnlockComplete={handleUnlockComplete}
+      />
     </View>
   );
 }
+
+// ========================================================================
+// QUICK UNLOCK MODAL STYLES
+// ========================================================================
+const qStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  card: {
+    width: W * 0.85,
+    backgroundColor: 'rgba(20,12,18,0.97)',
+    borderRadius: 24,
+    padding: 28,
+    borderWidth: 1,
+    borderColor: 'rgba(139,92,246,0.2)',
+    overflow: 'hidden',
+    alignItems: 'center',
+  },
+  topGlow: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 80,
+  },
+  lockIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: 'rgba(139,92,246,0.12)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#fff',
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  sub: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.4)',
+    marginBottom: 22,
+    textAlign: 'center',
+  },
+  btn: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 14,
+    backgroundColor: '#8B5CF6',
+    marginBottom: 10,
+  },
+  btnSub: {
+    backgroundColor: 'rgba(255,77,103,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,77,103,0.2)',
+  },
+  btnText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  cancelBtn: {
+    marginTop: 6,
+    paddingVertical: 8,
+  },
+  cancelText: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.35)',
+    fontWeight: '500',
+  },
+});
 
 // ========================================================================
 // STYLES
@@ -320,6 +534,21 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     borderRadius: STORY_SIZE / 2,
+  },
+  storyLockOverlay: {
+    position: 'absolute',
+    bottom: -2,
+    left: -2,
+  },
+  storyLockBadge: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: 'rgba(30,15,25,0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,215,0,0.4)',
   },
   storyOnlineDot: {
     position: 'absolute',
