@@ -156,24 +156,36 @@ export const HeightWeightStep = ({ formData, updateForm }) => (
   </View>
 );
 
-export const MusicMoviesStep = ({ formData, updateForm }) => (
-  <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" nestedScrollEnabled={true}>
-    <Text style={styles.inputLabel}>Favorite Music Genre</Text>
-    <View style={styles.chipContainer}>
-      {musicGenres.map(m => (
-        <Chip key={m} label={m} active={formData.music === m} onPress={() => updateForm('music', m)} />
-      ))}
-    </View>
-    <View style={{ height: 24 }} />
-    <Text style={styles.inputLabel}>Favorite Movie Genre</Text>
-    <View style={styles.chipContainer}>
-      {movieGenres.map(m => (
-        <Chip key={m} label={m} active={formData.movies === m} onPress={() => updateForm('movies', m)} />
-      ))}
-    </View>
-    <View style={{ height: 40 }} />
-  </ScrollView>
-);
+export const MusicMoviesStep = ({ formData, updateForm }) => {
+  const toggleSelection = (key, val) => {
+    const current = Array.isArray(formData[key]) ? formData[key] : [];
+    if (current.includes(val)) {
+      updateForm(key, current.filter(item => item !== val));
+    } else {
+      if (current.length >= 3) return; // Limit to 3
+      updateForm(key, [...current, val]);
+    }
+  };
+
+  return (
+    <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" nestedScrollEnabled={true}>
+      <Text style={styles.inputLabel}>Favorite Music Genres (Select up to 3)</Text>
+      <View style={styles.chipContainer}>
+        {musicGenres.map(m => (
+          <Chip key={m} label={m} active={Array.isArray(formData.music) && formData.music.includes(m)} onPress={() => toggleSelection('music', m)} />
+        ))}
+      </View>
+      <View style={{ height: 24 }} />
+      <Text style={styles.inputLabel}>Favorite Movie Genres (Select up to 3)</Text>
+      <View style={styles.chipContainer}>
+        {movieGenres.map(m => (
+          <Chip key={m} label={m} active={Array.isArray(formData.movies) && formData.movies.includes(m)} onPress={() => toggleSelection('movies', m)} />
+        ))}
+      </View>
+      <View style={{ height: 40 }} />
+    </ScrollView>
+  );
+};
 
 export const DateFoodStep = ({ formData, updateForm }) => (
   <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" nestedScrollEnabled={true}>
@@ -204,12 +216,18 @@ export const PhotosBioStep = ({ formData, updateForm, error, setError }) => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') return;
 
+    const maxSelectable = 6 - formData.photos.length;
     let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'], allowsEditing: true, aspect: [3, 4], quality: 0.8,
+      mediaTypes: ['images'], 
+      allowsMultipleSelection: true, 
+      selectionLimit: maxSelectable, 
+      quality: 0.8,
     });
 
     if (!result.canceled) {
-      updateForm('photos', [...formData.photos, result.assets[0].uri]);
+      const selectedUris = result.assets.map(asset => asset.uri);
+      const newPhotos = [...formData.photos, ...selectedUris].slice(0, 6);
+      updateForm('photos', newPhotos);
       setError(null);
     }
   };

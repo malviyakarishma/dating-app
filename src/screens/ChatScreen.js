@@ -75,7 +75,7 @@ const QuickUnlockModal = ({ visible, user, onClose, onUnlockComplete }) => {
             <Ionicons name="lock-closed" size={24} color="#8B5CF6" />
           </View>
           <Text style={qStyles.title}>Unlock chat with {user.name?.split(' ')[0]}</Text>
-          <Text style={qStyles.sub}>Pay ₹20 to start messaging</Text>
+          <Text style={qStyles.sub}>Pay ₹50 to start messaging</Text>
 
           <TouchableOpacity
             style={qStyles.btn}
@@ -88,7 +88,7 @@ const QuickUnlockModal = ({ visible, user, onClose, onUnlockComplete }) => {
             ) : (
               <>
                 <Ionicons name="flash" size={18} color="#fff" />
-                <Text style={qStyles.btnText}>One-Time · ₹20 / 24hrs</Text>
+                <Text style={qStyles.btnText}>One-Time · ₹50 / 24hrs</Text>
               </>
             )}
           </TouchableOpacity>
@@ -100,7 +100,7 @@ const QuickUnlockModal = ({ visible, user, onClose, onUnlockComplete }) => {
             activeOpacity={0.8}
           >
             <Ionicons name="repeat" size={18} color="#FF4D67" />
-            <Text style={[qStyles.btnText, { color: '#FF4D67' }]}>Auto-Renew · ₹20/day</Text>
+            <Text style={[qStyles.btnText, { color: '#FF4D67' }]}>Auto-Renew · ₹50/day</Text>
           </TouchableOpacity>
 
           <TouchableOpacity onPress={onClose} style={qStyles.cancelBtn}>
@@ -133,7 +133,7 @@ const ConversationRow = ({ item, navigation, isTyping, isLast }) => {
     <TouchableHighlight
       activeOpacity={1}
       underlayColor="rgba(255,255,255,0.05)"
-      onPress={() => navigation.navigate('ChatDM', { userName: item.user.name, otherUserId: item.user.id || item.user._id })}
+      onPress={() => navigation.navigate('ChatDM', { userName: item.user.name, otherUserId: item.user.id || item.user._id, gender: item.user.gender })}
     >
       <View style={styles.rowContainer}>
         {/* Avatar */}
@@ -272,7 +272,7 @@ export default function ChatScreen({ navigation }) {
     try {
       const res = await paymentService.getChatAccess(match._id);
       if (res.data?.hasAccess) {
-        navigation.navigate('ChatDM', { userName: match.name, otherUserId: match._id });
+        navigation.navigate('ChatDM', { userName: match.name, otherUserId: match._id, gender: match.gender });
       } else {
         setUnlockUser(match);
       }
@@ -284,7 +284,7 @@ export default function ChatScreen({ navigation }) {
 
   const handleUnlockComplete = (user) => {
     setUnlockUser(null);
-    navigation.navigate('ChatDM', { userName: user.name, otherUserId: user._id });
+    navigation.navigate('ChatDM', { userName: user.name, otherUserId: user._id, gender: user.gender });
   };
 
   return (

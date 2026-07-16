@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity,
-  Platform, Dimensions, FlatList, Modal, ActivityIndicator, Keyboard, Animated
+  Platform, Dimensions, FlatList, Modal, ActivityIndicator, Keyboard, Animated as RNAnimated
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
@@ -9,11 +9,16 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
+import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS } from '../theme/colors';
 import { useAuth } from '../context/AuthContext';
 import * as chatService from '../services/chatService.js';
 import * as paymentService from '../services/paymentService.js';
 import * as socket from '../services/socket.js';
+import ChatMascot from '../components/chat/ChatMascot';
+import SendEffectPicker, { SEND_EFFECTS } from '../components/chat/SendEffectPicker';
+import AnimationRegistry from '../components/chat/animations/AnimationRegistry';
 
 const { width: W } = Dimensions.get('window');
 
@@ -59,18 +64,18 @@ const formatCountdown = (ms) => {
 // ACCESS EXPIRED OVERLAY
 // ========================================================================
 const AccessExpiredOverlay = ({ userName, onRenew, loading }) => {
-  const scaleAnim = useRef(new Animated.Value(0.95)).current;
-  const opacityAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new RNAnimated.Value(0.95)).current;
+  const opacityAnim = useRef(new RNAnimated.Value(0)).current;
 
   useEffect(() => {
-    Animated.parallel([
-      Animated.spring(scaleAnim, { toValue: 1, friction: 8, tension: 80, useNativeDriver: true }),
-      Animated.timing(opacityAnim, { toValue: 1, duration: 300, useNativeDriver: true }),
+    RNAnimated.parallel([
+      RNAnimated.spring(scaleAnim, { toValue: 1, friction: 8, tension: 80, useNativeDriver: true }),
+      RNAnimated.timing(opacityAnim, { toValue: 1, duration: 300, useNativeDriver: true }),
     ]).start();
   }, []);
 
   return (
-    <Animated.View style={[expiredStyles.container, {
+    <RNAnimated.View style={[expiredStyles.container, {
       transform: [{ scale: scaleAnim }],
       opacity: opacityAnim,
     }]}>
@@ -104,7 +109,7 @@ const AccessExpiredOverlay = ({ userName, onRenew, loading }) => {
           ) : (
             <>
               <Ionicons name="flash" size={18} color="#fff" />
-              <Text style={expiredStyles.renewBtnText}>Renew · ₹20 for 24 hours</Text>
+              <Text style={expiredStyles.renewBtnText}>Renew · ₹50 for 24 hours</Text>
             </>
           )}
         </TouchableOpacity>
@@ -116,10 +121,10 @@ const AccessExpiredOverlay = ({ userName, onRenew, loading }) => {
           activeOpacity={0.8}
         >
           <Ionicons name="repeat" size={16} color="#FF4D67" />
-          <Text style={expiredStyles.subBtnText}>Auto-Renew · ₹20/day</Text>
+          <Text style={expiredStyles.subBtnText}>Auto-Renew · ₹50/day</Text>
         </TouchableOpacity>
       </View>
-    </Animated.View>
+    </RNAnimated.View>
   );
 };
 
@@ -127,14 +132,20 @@ const AccessExpiredOverlay = ({ userName, onRenew, loading }) => {
 // MAIN SCREEN
 // ========================================================================
 export default function ChatDMScreen({ route, navigation }) {
-  const { userName = 'User', otherUserId } = route.params || {};
+  const { userName = 'User', otherUserId, gender } = route.params || {};
 
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [inputText, setInputText] = useState('');
-  const [currentThemeKey, setCurrentThemeKey] = useState('Default');
-  const [isThemeModalVisible, setThemeModalVisible] = useState(false);
+  const [currentThemeKey] = useState('Default');
 
+  // Animation States
+  const [showIntro, setShowIntro] = useState(false);
+  const [isEffectPickerVisible, setEffectPickerVisible] = useState(false);
+  const [selectedEffect, setSelectedEffect] = useState(null);
+
+  // Fullscreen Receiver Animation State
+  const [playingEffect, setPlayingEffect] = useState(null);
   // Real-time Chat States
   const [conversationId, setConversationId] = useState(null);
   const [isOnline, setIsOnline] = useState(false);
@@ -239,6 +250,10 @@ export default function ChatDMScreen({ route, navigation }) {
       if (activeSocket) {
         activeSocket.emit('joinConversation', { conversationId: convId });
       }
+
+      // Trigger intro animation if it's a new conversation or on load
+      setShowIntro(true);
+      setTimeout(() => setShowIntro(false), 2000);
     } catch (err) {
       console.error('Failed to load chat history:', err);
     } finally {
@@ -247,14 +262,10 @@ export default function ChatDMScreen({ route, navigation }) {
   };
 
   useEffect(() => {
-    // First check access, then load chat if access is granted
+    // Always load chat history, then check access
     const init = async () => {
-      const granted = await checkAccess();
-      if (granted) {
-        await loadChatHistory();
-      } else {
-        setLoading(false);
-      }
+      await checkAccess();
+      await loadChatHistory();
     };
     init();
 
@@ -273,7 +284,7 @@ export default function ChatDMScreen({ route, navigation }) {
 
   useEffect(() => {
     // 1) Real-time message receive
-    const handleReceiveMessage = (msg) => {
+    const handleReceiveMessage = async (msg) => {
       if (msg.conversationId === conversationId) {
         setMessages((prev) => {
           // Avoid duplicate local optimistic appends
@@ -281,6 +292,16 @@ export default function ChatDMScreen({ route, navigation }) {
           if (exists) return prev;
           return [...prev, msg];
         });
+
+        // Trigger animation if there's an effect and we are the receiver
+        if (msg.effect && msg.senderId !== currentUser._id) {
+          const playedKey = `@played_effect_${msg._id || msg.id}`;
+          const hasPlayed = await AsyncStorage.getItem(playedKey);
+          if (!hasPlayed) {
+            setPlayingEffect(msg.effect);
+            await AsyncStorage.setItem(playedKey, 'true');
+          }
+        }
 
         // If we are viewing this screen, mark incoming message as seen instantly
         if (msg.senderId !== currentUser._id) {
@@ -393,7 +414,9 @@ export default function ChatDMScreen({ route, navigation }) {
     if (inputText.trim() === '' || !hasAccess) return;
 
     const textToSend = inputText.trim();
+    const effectToSend = selectedEffect; // Capture before clearing
     setInputText('');
+    setSelectedEffect(null); // Reset the effect after sending
 
     // Emit stop typing event on send
     if (conversationId && otherUserId) {
@@ -409,6 +432,7 @@ export default function ChatDMScreen({ route, navigation }) {
       senderId: currentUser._id,
       sender: 'me',
       status: 'sent',
+      effect: effectToSend,
       createdAt: new Date().toISOString(),
     };
 
@@ -425,10 +449,11 @@ export default function ChatDMScreen({ route, navigation }) {
           conversationId,
           text: textToSend,
           receiverId: otherUserId,
+          effect: effectToSend,
         });
       } else {
         // Fallback REST endpoint
-        await chatService.sendMessage(otherUserId, textToSend);
+        await chatService.sendMessage(otherUserId, textToSend, effectToSend);
         loadChatHistory();
       }
     } catch (err) {
@@ -467,11 +492,31 @@ export default function ChatDMScreen({ route, navigation }) {
     }
 
     return (
-      <View style={[dmStyles.messageRow, isMe ? dmStyles.messageRowMe : dmStyles.messageRowThem]}>
+      <Animated.View 
+        entering={FadeIn.duration(200)}
+        style={[dmStyles.messageRow, isMe ? dmStyles.messageRowMe : dmStyles.messageRowThem]}
+      >
         <View style={[
           dmStyles.bubble,
           isMe ? { backgroundColor: theme.bubbleColor } : dmStyles.bubbleThem
         ]}>
+          {item.effect && (() => {
+            const effectInfo = SEND_EFFECTS.find(e => e.id === item.effect);
+            if (!effectInfo) return null;
+            return (
+              <View style={{
+                flexDirection: 'row', alignItems: 'center',
+                backgroundColor: `${effectInfo.color}18`,
+                paddingHorizontal: 8, paddingVertical: 4,
+                borderRadius: 10, marginBottom: 6, alignSelf: 'flex-start',
+              }}>
+                <Ionicons name={effectInfo.icon} size={14} color={effectInfo.color} />
+                <Text style={{ color: effectInfo.color, fontSize: 11, fontWeight: '600', marginLeft: 4 }}>
+                  {effectInfo.name}
+                </Text>
+              </View>
+            );
+          })()}
           <Text style={dmStyles.messageText}>{item.text}</Text>
           <View style={dmStyles.messageFooter}>
             <Text style={dmStyles.timeText}>
@@ -484,7 +529,7 @@ export default function ChatDMScreen({ route, navigation }) {
             )}
           </View>
         </View>
-      </View>
+      </Animated.View>
     );
   };
 
@@ -531,9 +576,13 @@ export default function ChatDMScreen({ route, navigation }) {
               )}
             </View>
           </View>
-          <TouchableOpacity onPress={() => setThemeModalVisible(true)} style={dmStyles.headerIcon}>
-            <Ionicons name="color-palette-outline" size={W * 0.06} color="#fff" />
-          </TouchableOpacity>
+          
+          <ChatMascot 
+            gender={gender} 
+            isTyping={isTyping} 
+            isOnline={isOnline} 
+            showIntro={showIntro} 
+          />
         </BlurView>
 
         {/* Access check loading state */}
@@ -544,37 +593,119 @@ export default function ChatDMScreen({ route, navigation }) {
               Verifying chat access...
             </Text>
           </View>
-        ) : hasAccess === false ? (
-          // Access expired overlay
-          <AccessExpiredOverlay
-            userName={userName}
-            onRenew={handleRenew}
-            loading={renewLoading}
-          />
         ) : (
-          // Full chat interface
+          // Chat interface — always show messages, restrict input if unpaid
           <KeyboardAvoidingView
             behavior="padding"
             style={{ flex: 1 }}
             keyboardVerticalOffset={0}
           >
-            {/* Chat List - takes remaining space */}
+            {/* Chat List */}
             <View style={{ flex: 1 }}>
               {loading ? (
                 <ActivityIndicator size="large" color="#FF4D67" style={{ flex: 1 }} />
               ) : (
-                <FlatList
-                  ref={flatListRef}
-                  data={[...messages].reverse()}
-                  keyExtractor={(item) => item.id || item._id}
-                  renderItem={renderMessage}
-                  style={{ flex: 1 }}
-                  contentContainerStyle={dmStyles.listContent}
-                  showsVerticalScrollIndicator={false}
-                  inverted={true}
-                  keyboardDismissMode="interactive"
-                  keyboardShouldPersistTaps="handled"
-                />
+                <View style={{ flex: 1 }}>
+                  <FlatList
+                    ref={flatListRef}
+                    data={[...messages].reverse()}
+                    keyExtractor={(item) => item.id || item._id}
+                    renderItem={renderMessage}
+                    style={[{ flex: 1 }, !hasAccess && { opacity: 0.15 }]}
+                    contentContainerStyle={dmStyles.listContent}
+                    showsVerticalScrollIndicator={false}
+                    inverted={true}
+                    keyboardDismissMode="interactive"
+                    keyboardShouldPersistTaps="handled"
+                    scrollEnabled={hasAccess}
+                  />
+
+                  {/* Blurred overlay for unpaid users */}
+                  {!hasAccess && messages.length > 0 && (
+                    <View style={{
+                      ...StyleSheet.absoluteFillObject,
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                      zIndex: 10,
+                    }}>
+                      <BlurView intensity={80} tint="dark" style={StyleSheet.absoluteFill} />
+                      <View style={{ alignItems: 'center', paddingHorizontal: 32 }}>
+                        <View style={{
+                          width: 64, height: 64, borderRadius: 32,
+                          justifyContent: 'center', alignItems: 'center',
+                          marginBottom: 16, overflow: 'hidden',
+                        }}>
+                          <LinearGradient
+                            colors={['#8B5CF6', '#FF4D67']}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                            style={{ ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center' }}
+                          >
+                            <Ionicons name="chatbubbles" size={28} color="#fff" />
+                          </LinearGradient>
+                        </View>
+                        <Text style={{ color: '#fff', fontSize: 20, fontWeight: '800', marginBottom: 8, textAlign: 'center' }}>
+                          {messages.length} message{messages.length !== 1 ? 's' : ''} waiting
+                        </Text>
+                        <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 14, textAlign: 'center', marginBottom: 24, lineHeight: 20 }}>
+                          {userName} has sent you messages. Unlock to read and reply!
+                        </Text>
+                        <TouchableOpacity
+                          style={{
+                            flexDirection: 'row', alignItems: 'center',
+                            paddingVertical: 14, paddingHorizontal: 32,
+                            borderRadius: 30, overflow: 'hidden',
+                          }}
+                          onPress={() => handleRenew('ONE_TIME')}
+                          disabled={renewLoading}
+                          activeOpacity={0.8}
+                        >
+                          <LinearGradient
+                            colors={['#8B5CF6', '#FF4D67']}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 0 }}
+                            style={{ ...StyleSheet.absoluteFillObject }}
+                          />
+                          {renewLoading ? (
+                            <ActivityIndicator color="#fff" size="small" />
+                          ) : (
+                            <>
+                              <Ionicons name="flash" size={18} color="#fff" />
+                              <Text style={{ color: '#fff', fontWeight: '700', fontSize: 16, marginLeft: 8 }}>
+                                Unlock Chat · ₹50
+                              </Text>
+                            </>
+                          )}
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={{ marginTop: 12, paddingVertical: 8 }}
+                          onPress={() => handleRenew('SUBSCRIPTION')}
+                          disabled={renewLoading}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={{ color: '#FF4D67', fontSize: 14, fontWeight: '600' }}>
+                            Or Auto-Renew · ₹50/day
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  )}
+
+                  {/* No messages + no access */}
+                  {!hasAccess && messages.length === 0 && (
+                    <View style={{
+                      ...StyleSheet.absoluteFillObject,
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                    }}>
+                      <AccessExpiredOverlay
+                        userName={userName}
+                        onRenew={handleRenew}
+                        loading={renewLoading}
+                      />
+                    </View>
+                  )}
+                </View>
               )}
 
               {/* Typing indicator bubble */}
@@ -597,8 +728,51 @@ export default function ChatDMScreen({ route, navigation }) {
                 }
               ]}
             >
+              {/* Selected Effect Pill */}
+              {selectedEffect && (
+                <Animated.View 
+                  entering={FadeIn.duration(200)} 
+                  exiting={FadeOut.duration(200)}
+                  style={{
+                    position: 'absolute',
+                    top: -45,
+                    left: 16,
+                    backgroundColor: 'rgba(0,0,0,0.6)',
+                    borderRadius: 20,
+                    paddingHorizontal: 12,
+                    paddingVertical: 6,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    borderWidth: 1,
+                    borderColor: 'rgba(255,255,255,0.1)',
+                  }}
+                >
+                  <Text style={{ color: '#fff', fontSize: 13, fontWeight: '600', marginRight: 6 }}>
+                    {SEND_EFFECTS.find(e => e.id === selectedEffect)?.icon === 'heart' ? '❤️' :
+                     SEND_EFFECTS.find(e => e.id === selectedEffect)?.icon === 'aperture' ? '🕸️' :
+                     SEND_EFFECTS.find(e => e.id === selectedEffect)?.icon === 'mail' ? '💌' :
+                     SEND_EFFECTS.find(e => e.id === selectedEffect)?.icon === 'sparkles' ? '✨' : '🌹'}
+                    {' '}
+                    {SEND_EFFECTS.find(e => e.id === selectedEffect)?.name}
+                  </Text>
+                  <TouchableOpacity onPress={() => setSelectedEffect(null)}>
+                    <Ionicons name="close-circle" size={16} color="rgba(255,255,255,0.6)" />
+                  </TouchableOpacity>
+                </Animated.View>
+              )}
+
               {accessInfo?.canSend ? (
                 <>
+                  <TouchableOpacity 
+                    onPress={() => setEffectPickerVisible(true)}
+                    style={[dmStyles.effectBtn, selectedEffect && { backgroundColor: 'rgba(255,255,255,0.2)' }]}
+                  >
+                    <Ionicons 
+                      name={selectedEffect ? 'color-wand' : 'add'} 
+                      size={W * 0.055} 
+                      color={selectedEffect ? '#FF4D67' : '#fff'} 
+                    />
+                  </TouchableOpacity>
                   <TextInput
                     style={dmStyles.textInput}
                     placeholder="Type a message..."
@@ -631,39 +805,23 @@ export default function ChatDMScreen({ route, navigation }) {
           </KeyboardAvoidingView>
         )}
 
-        {/* Theme Picker Modal */}
-        <Modal
-          visible={isThemeModalVisible}
-          transparent={true}
-          animationType="fade"
-          onRequestClose={() => setThemeModalVisible(false)}
-        >
-          <View style={dmStyles.modalOverlay}>
-            <View style={dmStyles.modalContent}>
-              <Text style={dmStyles.modalTitle}>Choose Chat Theme</Text>
-              {Object.keys(THEMES).map((key) => (
-                <TouchableOpacity
-                  key={key}
-                  style={[
-                    dmStyles.themeOption,
-                    currentThemeKey === key && { borderColor: THEMES[key].bubbleColor, backgroundColor: 'rgba(255,255,255,0.1)' }
-                  ]}
-                  onPress={() => {
-                    setCurrentThemeKey(key);
-                    setThemeModalVisible(false);
-                  }}
-                >
-                  <View style={[dmStyles.themeColorDot, { backgroundColor: THEMES[key].bubbleColor }]} />
-                  <Text style={dmStyles.themeOptionText}>{THEMES[key].name}</Text>
-                  {currentThemeKey === key && <Ionicons name="checkmark" size={20} color={THEMES[key].bubbleColor} />}
-                </TouchableOpacity>
-              ))}
-              <TouchableOpacity onPress={() => setThemeModalVisible(false)} style={dmStyles.closeModalBtn}>
-                <Text style={dmStyles.closeModalText}>Cancel</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Modal>
+        <SendEffectPicker 
+          visible={isEffectPickerVisible}
+          selectedEffectId={selectedEffect}
+          onClose={() => setEffectPickerVisible(false)}
+          onSelect={(effect) => {
+            setSelectedEffect(effect);
+            setEffectPickerVisible(false);
+          }}
+        />
+
+        {/* Fullscreen Animation Overlay for Receiver */}
+        {playingEffect && (
+          <AnimationRegistry
+            effectId={playingEffect}
+            onComplete={() => setPlayingEffect(null)}
+          />
+        )}
 
       </View>
     </View>
@@ -815,6 +973,15 @@ const dmStyles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: W * 0.04, paddingTop: W * 0.03,
     borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.05)',
+  },
+  effectBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
   },
   textInput: {
     flex: 1, backgroundColor: 'rgba(255,255,255,0.08)',

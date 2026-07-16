@@ -15,7 +15,7 @@ export default function SignInScreen({ navigation }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { signIn } = useAuth();
+  const { signIn, resendRegistrationOtp } = useAuth();
 
   const handleSignIn = async () => {
     if (!email || !password) {
@@ -28,7 +28,17 @@ export default function SignInScreen({ navigation }) {
       setError(null);
       await signIn(email.trim(), password);
     } catch (err) {
-      setError(err.message || 'Login failed. Please try again.');
+      const errorMsg = err.message || 'Login failed. Please try again.';
+      if (errorMsg.toLowerCase().includes('verify your email')) {
+        try {
+          await resendRegistrationOtp(email.trim());
+          navigation.navigate('VerifyOtp', { email: email.trim(), isRegistration: true });
+        } catch (resendErr) {
+          setError('Could not resend OTP: ' + (resendErr.message || 'Unknown error'));
+        }
+      } else {
+        setError(errorMsg);
+      }
     } finally {
       setIsSubmitting(false);
     }

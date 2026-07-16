@@ -55,9 +55,9 @@ export async function request(endpoint, options = {}, tokenOverride = null) {
 
     if (!response.ok) {
       if (response.status === 401) {
-        // If the unauthorized request is the refresh call itself, do not retry
-        if (endpoint === 'auth/refresh') {
-          if (unauthorizedHandler) {
+        // If the unauthorized request is the refresh call itself or login/register, do not retry
+        if (endpoint === 'auth/refresh' || endpoint === 'auth/login' || endpoint === 'auth/register') {
+          if (endpoint === 'auth/refresh' && unauthorizedHandler) {
             unauthorizedHandler();
           }
           const errorMessage = result.message || `API Error: ${response.status}`;
@@ -90,7 +90,8 @@ export async function request(endpoint, options = {}, tokenOverride = null) {
         try {
           const storedRefreshToken = await AsyncStorage.getItem('refreshToken');
           if (!storedRefreshToken) {
-            throw new Error('No refresh token available');
+            // Throw the original 401 error instead of "No refresh token available"
+            throw new Error(result.message || `API Error: ${response.status}`);
           }
 
           const refreshUrl = `${API_URL}/auth/refresh`;

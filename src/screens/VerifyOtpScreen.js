@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform, Dimensions, SafeAreaView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../theme/colors';
@@ -16,7 +16,20 @@ export default function VerifyOtpScreen({ route, navigation }) {
   const [successMessage, setSuccessMessage] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isResending, setIsResending] = useState(false);
+  const [countdown, setCountdown] = useState(60);
   const { verifyOtp, forgotPassword, verifyRegistration, resendRegistrationOtp } = useAuth();
+
+  useEffect(() => {
+    let timer;
+    if (countdown > 0) {
+      timer = setInterval(() => {
+        setCountdown((prev) => prev - 1);
+      }, 1000);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [countdown]);
 
   const handleVerify = async () => {
     if (otp.length !== 6) {
@@ -58,6 +71,7 @@ export default function VerifyOtpScreen({ route, navigation }) {
       }
       
       setSuccessMessage('OTP code has been resent to your email!');
+      setCountdown(60);
     } catch (err) {
       setError(err.message || 'Resend failed. Please try again later.');
     } finally {
@@ -112,8 +126,10 @@ export default function VerifyOtpScreen({ route, navigation }) {
           {/* Bottom Resend Row */}
           <View style={styles.bottomRow}>
             <Text style={styles.bottomText}>Didn't receive code? </Text>
-            <TouchableOpacity onPress={handleResend} disabled={isResending} activeOpacity={0.7}>
-              <Text style={styles.bottomLink}>{isResending ? 'Sending...' : 'Resend Code'}</Text>
+            <TouchableOpacity onPress={handleResend} disabled={isResending || countdown > 0} activeOpacity={0.7}>
+              <Text style={[styles.bottomLink, countdown > 0 && { color: 'rgba(255,255,255,0.4)' }]}>
+                {isResending ? 'Sending...' : countdown > 0 ? `Resend in ${countdown}s` : 'Resend Code'}
+              </Text>
             </TouchableOpacity>
           </View>
 

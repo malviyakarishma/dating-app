@@ -890,6 +890,7 @@ export default function DiscoverScreen({ navigation }) {
                   navigation.navigate('ChatDM', {
                     userName: matchedUser?.name,
                     otherUserId: matchedUser?.id || matchedUser?._id,
+                    gender: matchedUser?.gender
                   });
                 }}
                 activeOpacity={0.8}

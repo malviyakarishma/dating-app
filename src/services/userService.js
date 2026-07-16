@@ -47,3 +47,10 @@ export async function uploadProfilePhotos(photoUris, tokenOverride = null) {
     body: formData,
   }, tokenOverride);
 }
+
+export async function savePushToken(expoPushToken) {
+  return request('users/push-token', {
+    method: 'PATCH',
+    body: JSON.stringify({ expoPushToken }),
+  });
+}

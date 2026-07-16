@@ -495,7 +495,8 @@ export default function MatchesScreen({ navigation }) {
       setSelectedItem(null);
       navigation.navigate('ChatDM', {
         userName: selectedItem.user.name,
-        otherUserId: selectedItem.user.id || selectedItem.user._id
+        otherUserId: selectedItem.user.id || selectedItem.user._id,
+        gender: selectedItem.user.gender
       });
     }
   };

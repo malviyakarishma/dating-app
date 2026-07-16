@@ -4,6 +4,7 @@ import * as authService from '../services/authService.js';
 import * as userService from '../services/userService.js';
 import { onUnauthorized } from '../services/apiClient.js';
 import { initSocket, disconnectSocket } from '../services/socket.js';
+import { registerForPushNotifications } from '../services/notifications.js';
 
 const AuthContext = createContext(null);
 
@@ -68,6 +69,17 @@ export function AuthProvider({ children }) {
               } else {
                 setUser(fetchedUser);
                 await AsyncStorage.setItem('user', JSON.stringify(fetchedUser));
+
+                // Register for push notifications
+                registerForPushNotifications()
+                  .then(pushToken => {
+                    if (pushToken) {
+                      userService.savePushToken(pushToken).catch(err =>
+                        console.log('Failed to save push token:', err.message)
+                      );
+                    }
+                  })
+                  .catch(err => console.log('Push registration error:', err.message));
               }
             }
           } catch (err) {
@@ -104,6 +116,18 @@ export function AuthProvider({ children }) {
       setRefreshToken(tokens.refresh.token);
       setUser(loggedInUser);
       initSocket();
+
+      // Register for push notifications after login
+      registerForPushNotifications()
+        .then(pushToken => {
+          if (pushToken) {
+            userService.savePushToken(pushToken).catch(err =>
+              console.log('Failed to save push token:', err.message)
+            );
+          }
+        })
+        .catch(err => console.log('Push registration error:', err.message));
+
       return { success: true };
     } catch (error) {
       console.error('Sign In Error:', error);

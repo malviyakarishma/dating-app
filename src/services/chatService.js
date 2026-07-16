@@ -6,10 +6,10 @@ import { request } from './apiClient.js';
  * @param {string} text
  * @returns {Promise<any>}
  */
-export async function sendMessage(receiverId, text) {
+export async function sendMessage(receiverId, text, effect = null) {
   return request('chats/message', {
     method: 'POST',
-    body: JSON.stringify({ receiverId, text }),
+    body: JSON.stringify({ receiverId, text, effect }),
   });
 }
 

@@ -54,8 +54,8 @@ export default function ProfileSetupScreen({ navigation }) {
     weight: user?.weight || '',
     heightUnit: user?.heightUnit || 'ft',
     weightUnit: user?.weightUnit || 'kg',
-    music: user?.music || '',
-    movies: user?.movies || '',
+    music: user?.music ? (typeof user.music === 'string' ? user.music.split(', ') : user.music) : [],
+    movies: user?.movies ? (typeof user.movies === 'string' ? user.movies.split(', ') : user.movies) : [],
     date: user?.date || '',
     food: user?.food || '',
     relationshipType: user?.relationshipType || 'Long-term',
@@ -126,7 +126,7 @@ export default function ProfileSetupScreen({ navigation }) {
         if (!formData.weight) return "Weight is required.";
         break;
       case 'music_movies':
-        if (!formData.music || !formData.movies) return "Please complete this section.";
+        if (!formData.music || formData.music.length === 0 || !formData.movies || formData.movies.length === 0) return "Please select at least one from each.";
         break;
       case 'date_food':
         if (!formData.date || !formData.food) return "Please complete this section.";
@@ -195,6 +195,8 @@ export default function ProfileSetupScreen({ navigation }) {
       setUploadStatus('Finalizing profile...');
       await updateProfileStep({
         ...formData,
+        music: Array.isArray(formData.music) ? formData.music.join(', ') : formData.music,
+        movies: Array.isArray(formData.movies) ? formData.movies.join(', ') : formData.movies,
         photos: uploadedUrls,
         bio: formData.bio.trim() || undefined,
       });
