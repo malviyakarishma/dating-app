@@ -139,7 +139,9 @@ export async function request(endpoint, options = {}, tokenOverride = null) {
       }
 
       const errorMessage = result.message || `API Error: ${response.status}`;
-      throw new Error(errorMessage);
+      const apiError = new Error(errorMessage);
+      apiError.status = response.status;
+      throw apiError;
     }
 
     return result;

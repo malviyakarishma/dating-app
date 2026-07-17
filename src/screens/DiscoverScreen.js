@@ -717,8 +717,8 @@ export default function DiscoverScreen({ navigation }) {
             return next;
           });
         } catch (err) {
-          if (err.response && err.response.status === 429) {
-            showToast(err.response.data.message || 'Swipe limit reached');
+          if (err.status === 429 || (err.message && err.message.toLowerCase().includes('limit'))) {
+            showToast(err.message || 'Swipe limit reached');
             setLimitReached(true);
             return;
           }
@@ -766,17 +766,27 @@ export default function DiscoverScreen({ navigation }) {
           />
         ) : limitReached ? (
           <BlurView
-            intensity={50}
+            intensity={60}
             tint="dark"
             style={[s.emptyBlur, { overflow: 'hidden' }]}
           >
             <Ionicons
-              name="stop-circle-outline"
+              name="lock-closed-outline"
               size={W * 0.14}
-              color="#FF6B6B"
+              color={COLORS.pinkHighlight}
             />
-            <Text style={s.emptyTitle}>Stop swiping</Text>
-            <Text style={s.emptySub}>You have reached your swipe limit for the next 2 days.</Text>
+            <Text style={[s.emptyTitle, { textAlign: 'center' }]}>Out of Swipes</Text>
+            <Text style={[s.emptySub, { marginBottom: 20 }]}>
+              No more profiles for you, you have hit your limit.
+            </Text>
+            <TouchableOpacity onPress={() => navigation.navigate('Profile')}>
+              <LinearGradient
+                colors={[COLORS.maroon, COLORS.burgundy]}
+                style={s.restartBtn}
+              >
+                <Text style={s.restartText}>Buy Premium Subscription</Text>
+              </LinearGradient>
+            </TouchableOpacity>
           </BlurView>
         ) : hasProfiles ? (
           (() => {
@@ -811,13 +821,13 @@ export default function DiscoverScreen({ navigation }) {
             <Ionicons
               name="heart-dislike-outline"
               size={W * 0.14}
-              color="rgba(255,255,255,0.4)"
+              color={COLORS.pinkHighlight}
             />
             <Text style={s.emptyTitle}>No more profiles</Text>
             <Text style={s.emptySub}>Check back later for new people</Text>
             <TouchableOpacity onPress={fetchProfiles}>
               <LinearGradient
-                colors={['#8B5CF6', '#6D28D9']}
+                colors={[COLORS.maroon, COLORS.burgundy]}
                 style={s.restartBtn}
               >
                 <Text style={s.restartText}>Refresh Feed</Text>

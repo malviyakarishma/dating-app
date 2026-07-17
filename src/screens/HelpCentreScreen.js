@@ -411,17 +411,6 @@ export default function HelpCentreScreen() {
     }
   }, [deleteConfirmText, signOut]);
 
-  // ── Log out ──
-  const handleLogOut = useCallback(() => {
-    Alert.alert(
-      'Log Out',
-      'Are you sure you want to log out?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Log Out', style: 'destructive', onPress: () => signOut() },
-      ]
-    );
-  }, [signOut]);
 
   const isDeleteEnabled = deleteConfirmText.trim().toUpperCase() === 'DELETE';
 
@@ -520,15 +509,6 @@ export default function HelpCentreScreen() {
         <Animated.View entering={FadeInDown.duration(500).delay(600)} style={s.dangerZone}>
           <View style={s.dangerDivider} />
           <Text style={s.dangerLabel}>Danger Zone</Text>
-
-          <TouchableOpacity activeOpacity={0.8} onPress={handleLogOut}>
-            <View style={s.dangerBtn}>
-              <BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFill} />
-              <Ionicons name="log-out-outline" size={22} color="#FF8C5A" style={{ marginRight: 12 }} />
-              <Text style={s.dangerBtnTextOrange}>Log Out</Text>
-              <Ionicons name="chevron-forward" size={18} color="rgba(255,140,90,0.5)" />
-            </View>
-          </TouchableOpacity>
 
           <TouchableOpacity activeOpacity={0.8} onPress={() => setShowDeleteModal(true)}>
             <View style={s.dangerBtnRed}>
