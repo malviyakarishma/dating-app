@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, Dimensions, Platform, ScrollView, Image
+  View, Text, StyleSheet, TouchableOpacity, Dimensions, Platform, ScrollView, Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -33,11 +33,13 @@ const PREMIUM_ACTIONS = [
   {
     title: 'Support',
     items: [
-      { icon: 'help-circle-outline', label: 'Help Center', route: null },
+      { icon: 'help-circle-outline', label: 'Help Center', route: 'HelpCentre' },
       { icon: 'warning-outline', label: 'Report a Problem', route: null },
     ]
   }
 ];
+
+
 
 const calculateAge = (dobString) => {
   if (!dobString) return '';
@@ -94,9 +96,13 @@ export default function ProfileScreen() {
   const { user, signOut } = useAuth();
   const navigation = useNavigation();
 
-  const handleMenuPress = (route) => {
-    if (route) navigation.navigate(route);
+  const handleMenuPress = (item) => {
+    if (item.route) {
+      navigation.navigate(item.route);
+    }
   };
+
+
 
   const profileCompletion = useMemo(() => calculateProfileCompletion(user), [user]);
 
@@ -199,7 +205,7 @@ export default function ProfileScreen() {
                     <TouchableOpacity
                       key={itemIndex}
                       activeOpacity={0.7}
-                      onPress={() => handleMenuPress(item.route)}
+                      onPress={() => handleMenuPress(item)}
                       style={[
                         styles.menuItem,
                         itemIndex < group.items.length - 1 && styles.menuItemBorder
@@ -232,6 +238,8 @@ export default function ProfileScreen() {
         </Animated.View>
 
       </ScrollView>
+
+
     </View>
   );
 }
@@ -390,4 +398,5 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 77, 103, 0.3)',
   },
   signOutText: { color: '#FF4D67', fontSize: 16, fontWeight: '700' },
+
 });

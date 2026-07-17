@@ -7,6 +7,7 @@ import ProfileSetupNavigator from './ProfileSetupNavigator';
 import TabNavigator from './TabNavigator';
 import ChatDMScreen from '../screens/ChatDMScreen';
 import EditProfileScreen from '../screens/EditProfileScreen';
+import HelpCentreScreen from '../screens/HelpCentreScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -42,8 +43,14 @@ export default function RootNavigator() {
             component={EditProfileScreen} 
             options={{ contentStyle: { backgroundColor: '#0d0507' } }} 
           />
+          <Stack.Screen 
+            name="HelpCentre" 
+            component={HelpCentreScreen} 
+            options={{ contentStyle: { backgroundColor: '#0d0507' } }} 
+          />
         </Stack.Group>
       )}
     </Stack.Navigator>
   );
 }
+

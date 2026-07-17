@@ -623,6 +623,7 @@ export default function DiscoverScreen({ navigation }) {
   const [matchedUser, setMatchedUser] = useState(null);
   const [isMatchModalVisible, setMatchModalVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
+  const [limitReached, setLimitReached] = useState(false);
 
   const insets = useSafeAreaInsets();
   const toastOpacity = useRef(new Animated.Value(0)).current;
@@ -708,16 +709,26 @@ export default function DiscoverScreen({ navigation }) {
           } else if (status === 'like') {
             showToast(`Request sent to ${swipedProfile.name || 'user'}!`);
           }
-        } catch (err) {
-          console.error('Swipe action failed:', err);
-        }
 
-        // Add to swiped set — this triggers activeProfiles/loopedProfiles to recompute
-        setSwipedIds(prev => {
-          const next = new Set(prev);
-          next.add(swipedProfile.id || swipedProfile._id);
-          return next;
-        });
+          // Add to swiped set — this triggers activeProfiles/loopedProfiles to recompute
+          setSwipedIds(prev => {
+            const next = new Set(prev);
+            next.add(swipedProfile.id || swipedProfile._id);
+            return next;
+          });
+        } catch (err) {
+          if (err.response && err.response.status === 429) {
+            showToast(err.response.data.message || 'Swipe limit reached');
+            setLimitReached(true);
+            return;
+          }
+          console.error('Swipe action failed:', err);
+          setSwipedIds(prev => {
+            const next = new Set(prev);
+            next.add(swipedProfile.id || swipedProfile._id);
+            return next;
+          });
+        }
       }
 
       // After recompute, the same index now points to the next profile
@@ -753,6 +764,20 @@ export default function DiscoverScreen({ navigation }) {
             color="#C084FC"
             style={{ marginTop: H * 0.4 }}
           />
+        ) : limitReached ? (
+          <BlurView
+            intensity={50}
+            tint="dark"
+            style={[s.emptyBlur, { overflow: 'hidden' }]}
+          >
+            <Ionicons
+              name="stop-circle-outline"
+              size={W * 0.14}
+              color="#FF6B6B"
+            />
+            <Text style={s.emptyTitle}>Stop swiping</Text>
+            <Text style={s.emptySub}>You have reached your swipe limit for the next 2 days.</Text>
+          </BlurView>
         ) : hasProfiles ? (
           (() => {
             const currentProfile = loopedProfiles[renderIndex];
@@ -803,7 +828,7 @@ export default function DiscoverScreen({ navigation }) {
       </View>
 
       {/* Bottom arc of real user avatars — overlapping the card */}
-      {!loading && hasProfiles && loopedProfiles.length > 0 && (
+      {!loading && !limitReached && hasProfiles && loopedProfiles.length > 0 && (
         <Animated.FlatList
           ref={scrollViewRef}
           horizontal

@@ -17,7 +17,7 @@ import { useAuth } from '../context/AuthContext';
 import { COLORS } from '../theme/colors';
 import OnboardingBackground from '../components/onboarding/OnboardingBackground';
 import {
-  GenderStep, DobStep, ZodiacStep, OccupationStep, StudentStep,
+  GenderStep, DobStep, ZodiacStep, OccupationStep,
   CollegeLocationStep, HeightWeightStep, MusicMoviesStep,
   DateFoodStep, LookingForStep, PhotosBioStep
 } from '../components/onboarding/OnboardingSteps';
@@ -29,7 +29,6 @@ const STEPS = [
   { id: 'dob', title: "My date of birth is", subtitle: "We need this to verify your age" },
   { id: 'zodiac', title: "My zodiac sign is", subtitle: "Written in the stars" },
   { id: 'occupation', title: "What's your occupation?", subtitle: "Tell us what you do" },
-  { id: 'student', title: "Are you a student?", subtitle: "Uni life or working professional?" },
   { id: 'college_location', title: "Where are you based?", subtitle: "Help us find matches near you" },
   { id: 'height_weight', title: "Your height and weight", subtitle: "Just the physical details" },
   { id: 'music_movies', title: "Your entertainment vibe", subtitle: "What are we watching/listening to?" },
@@ -47,7 +46,6 @@ export default function ProfileSetupScreen({ navigation }) {
     dob: user?.dob ? new Date(user.dob) : null,
     zodiac: user?.zodiac || '',
     occupation: user?.occupation || '',
-    isStudent: user?.isStudent || 'Yes',
     college: user?.college || '',
     location: user?.location || '',
     height: user?.height || '',
@@ -74,13 +72,12 @@ export default function ProfileSetupScreen({ navigation }) {
     if (!u.dob) return 1;
     if (!u.zodiac) return 2;
     if (!u.occupation) return 3;
-    if (!u.isStudent) return 4;
-    if (!u.location) return 5;
-    if (!u.height || !u.weight) return 6;
-    if (!u.music || !u.movies) return 7;
-    if (!u.date || !u.food) return 8;
-    if (!u.relationshipType) return 9;
-    if (!u.photos || u.photos.length < 3) return 10;
+    if (!u.location) return 4;
+    if (!u.height || !u.weight) return 5;
+    if (!u.music || !u.movies) return 6;
+    if (!u.date || !u.food) return 7;
+    if (!u.relationshipType) return 8;
+    if (!u.photos || u.photos.length < 3) return 9;
     return 0;
   };
 
@@ -224,7 +221,6 @@ export default function ProfileSetupScreen({ navigation }) {
           {item.id === 'dob' && <DobStep formData={formData} updateForm={updateForm} />}
           {item.id === 'zodiac' && <ZodiacStep formData={formData} updateForm={updateForm} />}
           {item.id === 'occupation' && <OccupationStep formData={formData} updateForm={updateForm} />}
-          {item.id === 'student' && <StudentStep formData={formData} updateForm={updateForm} />}
           {item.id === 'college_location' && <CollegeLocationStep formData={formData} updateForm={updateForm} />}
           {item.id === 'height_weight' && <HeightWeightStep formData={formData} updateForm={updateForm} />}
           {item.id === 'music_movies' && <MusicMoviesStep formData={formData} updateForm={updateForm} />}

@@ -129,7 +129,6 @@ export default function EditProfileScreen() {
   const [zodiac, setZodiac] = useState(user?.zodiac || '');
   const [zodiacOpen, setZodiacOpen] = useState(false);
   const [occupation, setOccupation] = useState(user?.occupation || '');
-  const [isStudent, setIsStudent] = useState(user?.isStudent || 'Yes');
   const [college, setCollege] = useState(user?.college || '');
   const [location, setLocation] = useState(user?.location || '');
   const [height, setHeight] = useState(user?.height || '');
@@ -218,7 +217,6 @@ export default function EditProfileScreen() {
         dob,
         zodiac,
         occupation: occupation.trim(),
-        isStudent,
         college: college.trim(),
         location: location.trim(),
         height: height.toString(),
@@ -366,15 +364,6 @@ export default function EditProfileScreen() {
         onChangeText={setOccupation}
         maxLength={200}
       />
-
-      {/* Student */}
-      <View style={{ marginBottom: W * 0.04 }}>
-        <Text style={styles.sectionLabel}>Are you a student?</Text>
-        <View style={{ flexDirection: 'row', gap: 10 }}>
-          <SelectionButton label="Yes" icon="school-outline" active={isStudent === 'Yes'} onPress={() => setIsStudent('Yes')} style={{ flex: 1 }} />
-          <SelectionButton label="No" icon="person-outline" active={isStudent === 'No'} onPress={() => setIsStudent('No')} style={{ flex: 1 }} />
-        </View>
-      </View>
 
       {/* College */}
       <InputField

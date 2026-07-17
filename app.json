@@ -1,18 +1,18 @@
 {
   "expo": {
-    "name": "dating",
+    "name": "BoundByLove",
     "slug": "dating",
     "scheme": "dating",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/applogo.jpg",
     "userInterfaceStyle": "light",
     "backgroundColor": "#0d0507",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/applogo.jpg",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#fdf5f1"
     },
     "ios": {
       "supportsTablet": true,
@@ -23,8 +23,8 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "foregroundImage": "./assets/applogo.jpg",
+        "backgroundColor": "#fdf5f1"
       },
       "edgeToEdgeEnabled": true,
       "package": "com.karriisshma.dating"
@@ -40,8 +40,8 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/icon.png",
-          "color": "#FF4D67"
+          "icon": "./assets/applogo.jpg",
+          "color": "#FF6B9E"
         }
       ]
     ],

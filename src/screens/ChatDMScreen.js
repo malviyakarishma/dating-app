@@ -89,40 +89,54 @@ const AccessExpiredOverlay = ({ userName, onRenew, loading }) => {
             end={{ x: 1, y: 1 }}
             style={expiredStyles.lockGradient}
           >
-            <Ionicons name="lock-closed" size={32} color="#fff" />
+            <Ionicons name="lock-closed" size={34} color="#fff" />
           </LinearGradient>
         </View>
 
         <Text style={expiredStyles.title}>Chat Access Expired</Text>
         <Text style={expiredStyles.subtitle}>
-          Renew access to continue chatting with {userName}
+          Renew access to continue{'\n'}chatting with {userName}
         </Text>
 
-        <TouchableOpacity
-          style={expiredStyles.renewBtn}
-          onPress={() => onRenew('ONE_TIME')}
-          disabled={loading}
-          activeOpacity={0.8}
-        >
-          {loading ? (
-            <ActivityIndicator color="#fff" size="small" />
-          ) : (
-            <>
-              <Ionicons name="flash" size={18} color="#fff" />
-              <Text style={expiredStyles.renewBtnText}>Renew · ₹50 for 24 hours</Text>
-            </>
-          )}
-        </TouchableOpacity>
+        <View style={expiredStyles.btnGroup}>
+          <TouchableOpacity
+            onPress={() => onRenew('ONE_TIME')}
+            disabled={loading}
+            activeOpacity={0.8}
+            style={expiredStyles.renewBtn}
+          >
+            <LinearGradient
+              colors={['#8B5CF6', '#7C3AED']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={StyleSheet.absoluteFill}
+            />
+            {loading ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <View style={expiredStyles.btnInner}>
+                <Ionicons name="flash" size={18} color="#fff" />
+                <Text style={expiredStyles.renewBtnText}>Renew · ₹50 for 24 hours</Text>
+              </View>
+            )}
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          style={expiredStyles.subBtn}
-          onPress={() => onRenew('SUBSCRIPTION')}
-          disabled={loading}
-          activeOpacity={0.8}
-        >
-          <Ionicons name="repeat" size={16} color="#FF4D67" />
-          <Text style={expiredStyles.subBtnText}>Auto-Renew · ₹50/day</Text>
-        </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => onRenew('SUBSCRIPTION')}
+            disabled={loading}
+            activeOpacity={0.8}
+            style={expiredStyles.subBtn}
+          >
+            <View style={expiredStyles.btnInner}>
+              <Ionicons name="repeat" size={16} color="#FF4D67" />
+              <Text style={expiredStyles.subBtnText}>Auto-Renew · ₹50/day</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+
+        <Text style={expiredStyles.infoText}>
+          Access unlocks messaging for 24 hours
+        </Text>
       </View>
     </RNAnimated.View>
   );
@@ -695,8 +709,7 @@ export default function ChatDMScreen({ route, navigation }) {
                   {!hasAccess && messages.length === 0 && (
                     <View style={{
                       ...StyleSheet.absoluteFillObject,
-                      justifyContent: 'center',
-                      alignItems: 'center',
+                      zIndex: 10,
                     }}>
                       <AccessExpiredOverlay
                         userName={userName}
@@ -718,7 +731,8 @@ export default function ChatDMScreen({ route, navigation }) {
               )}
             </View>
 
-            {/* Input Area */}
+            {/* Input Area — hide when expired overlay is fully visible (no messages) */}
+            {!(hasAccess === false && messages.length === 0) && (
             <View
               style={[
                 dmStyles.inputContainer,
@@ -788,9 +802,15 @@ export default function ChatDMScreen({ route, navigation }) {
               ) : (
                 <TouchableOpacity 
                   onPress={() => handleRenew('ONE_TIME')} 
-                  style={{ backgroundColor: '#8B5CF6', flex: 1, paddingVertical: 14, borderRadius: 14, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginBottom: 8 }}
+                  style={{ backgroundColor: '#8B5CF6', flex: 1, paddingVertical: 14, borderRadius: 14, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginBottom: 8, overflow: 'hidden' }}
                   disabled={renewLoading}
                 >
+                  <LinearGradient
+                    colors={['#8B5CF6', '#7C3AED']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={StyleSheet.absoluteFill}
+                  />
                   {renewLoading ? (
                     <ActivityIndicator color="#fff" size="small" />
                   ) : (
@@ -802,6 +822,7 @@ export default function ChatDMScreen({ route, navigation }) {
                 </TouchableOpacity>
               )}
             </View>
+            )}
           </KeyboardAvoidingView>
         )}
 
@@ -837,13 +858,20 @@ const expiredStyles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     overflow: 'hidden',
+    width: '100%',
   },
   content: {
     alignItems: 'center',
-    paddingHorizontal: 40,
+    paddingHorizontal: 32,
+    width: '100%',
   },
   lockCircle: {
     marginBottom: 24,
+    shadowColor: '#8B5CF6',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.4,
+    shadowRadius: 20,
+    elevation: 10,
   },
   lockGradient: {
     width: 80,
@@ -853,52 +881,67 @@ const expiredStyles = StyleSheet.create({
     alignItems: 'center',
   },
   title: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '800',
     color: '#fff',
     textAlign: 'center',
-    letterSpacing: -0.5,
+    letterSpacing: -0.3,
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 14,
-    color: 'rgba(255,255,255,0.45)',
+    color: 'rgba(255,255,255,0.5)',
     textAlign: 'center',
-    lineHeight: 20,
+    lineHeight: 21,
     marginBottom: 32,
   },
-  renewBtn: {
+  btnGroup: {
+    width: '100%',
+    marginBottom: 20,
+  },
+  btnInner: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+  },
+  renewBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
     width: '100%',
     paddingVertical: 16,
+    paddingHorizontal: 20,
     borderRadius: 16,
-    backgroundColor: '#8B5CF6',
+    overflow: 'hidden',
     marginBottom: 12,
   },
   renewBtnText: {
     fontSize: 16,
     fontWeight: '700',
     color: '#fff',
+    marginLeft: 8,
   },
   subBtn: {
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
     width: '100%',
     paddingVertical: 14,
+    paddingHorizontal: 20,
     borderRadius: 16,
-    backgroundColor: 'rgba(255,77,103,0.1)',
+    backgroundColor: 'rgba(255,77,103,0.08)',
     borderWidth: 1,
-    borderColor: 'rgba(255,77,103,0.2)',
+    borderColor: 'rgba(255,77,103,0.18)',
   },
   subBtnText: {
     fontSize: 15,
     fontWeight: '600',
     color: '#FF4D67',
+    marginLeft: 8,
+  },
+  infoText: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.25)',
+    textAlign: 'center',
+    fontWeight: '500',
   },
 });
 

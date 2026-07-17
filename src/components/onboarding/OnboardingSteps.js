@@ -113,12 +113,7 @@ export const OccupationStep = ({ formData, updateForm }) => (
   </View>
 );
 
-export const StudentStep = ({ formData, updateForm }) => (
-  <View style={styles.grid}>
-    <SelectCard label="Yes" icon="school-outline" active={formData.isStudent === 'Yes'} onPress={() => updateForm('isStudent', 'Yes')} />
-    <SelectCard label="No" icon="business-outline" active={formData.isStudent === 'No'} onPress={() => updateForm('isStudent', 'No')} />
-  </View>
-);
+
 
 export const CollegeLocationStep = ({ formData, updateForm }) => (
   <View>

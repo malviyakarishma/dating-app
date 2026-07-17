@@ -13,6 +13,12 @@ export async function updateProfile(profileData, tokenOverride = null) {
   }, tokenOverride);
 }
 
+export async function deleteAccount(tokenOverride = null) {
+  return request('users/profile', {
+    method: 'DELETE',
+  }, tokenOverride);
+}
+
 export async function deletePhoto(photoUrl, tokenOverride = null) {
   return request('users/photo', {
     method: 'DELETE',
